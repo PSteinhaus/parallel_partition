@@ -18,6 +18,17 @@ int main(int argc, char *argv[])
     for (int i=0; i<v.size(); i++)
         std::cout << v[i] << " ";
 
+    v = {4,8,7,6,5,4,3,2,1,0};
+
+    // test parallel partition (phase one)  (block size is currently 2)
+    int leftNeutralized, rightNeutralized;
+    auto remainingBlocks = p_partition::parallel_partition_phase(v.begin(),
+                                          v.end(),
+                                          [pivot](const auto& em){ return em < pivot; },
+                                          &leftNeutralized,
+                                          &rightNeutralized);
+    for (int i=0; i<v.size(); i++)
+        std::cout << v[i] << " ";
 }
 
 

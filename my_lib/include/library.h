@@ -3,6 +3,7 @@
 
 #include <vector>
 #include <omp.h>
+#include <atomic>
 
 namespace p_partition  {
     const int BOTH = 0;
@@ -44,70 +45,75 @@ namespace p_partition  {
 
     const int BLOCK_SIZE = 2;
 
-    template <typename It1, typename It2>
-    bool block_available(It1 target, It2 counterpart) {
-        return std::distance(target, counterpart) >= BLOCK_SIZE-1;  // TODO: does this work? The reference says that negative distances are only possible for random access iterators (such as pointers)...
+    inline
+    bool block_available(int leftTaken, int rightTaken, int size) {
+        return leftTaken + rightTaken < size;
     }
 
-    template <typename It>
-    It get_block(It *iter) {
-        It block = *iter;
-        *iter = std::next(*iter, BLOCK_SIZE);
+    template <typename ForwardIt>
+    ForwardIt get_left_block(ForwardIt leftBegin, int *leftTaken) {
+        ForwardIt block = std::next(leftBegin, *leftTaken);
+        *leftTaken += BLOCK_SIZE;
+        return block;
+    }
+
+    template <typename ForwardIt>
+    ForwardIt get_right_block(ForwardIt leftBegin, int *rightTaken, int size) {
+        ForwardIt block = std::next(leftBegin, size - 1 - *rightTaken);
+        *rightTaken += BLOCK_SIZE;
         return block;
     }
 
     // returns the remaining blocks
-    template <typename ForwardIt, typename BackwardIt, typename UnaryPredicate>
-    std::vector<ForwardIt> parallel_partition_phase(ForwardIt left, BackwardIt right, UnaryPredicate p, int *leftNeutralized, int *rightNeutralized) {
-        //auto pivot = *std::next(left, std::distance(left,right)/2); // naive pivot
+    template <typename ForwardIt, typename UnaryPredicate>
+    std::vector<ForwardIt> parallel_partition_phase(ForwardIt left, ForwardIt afterLast, UnaryPredicate p, int *leftNeutralized, int *rightNeutralized) {
+        int leftTaken = 0, rightTaken = 0;
+        int size = std::distance(left, afterLast);
+        int ln = 0, rn = 0;
         std::vector<ForwardIt> remainingBlocks;
-        int ln, rn;
+
 #pragma omp parallel reduction(+: ln, rn)
         {
-#pragma omp single
-            {
-                remainingBlocks = new std::vector<ForwardIt>(omp_get_num_threads());
-            }
             ForwardIt leftBlock, rightBlock;
             bool gotLeftBlock, gotRightBlock;
             int leftCounter = 0, rightCounter = 0;
 #pragma omp critical
             {   // get your first left block
-                gotLeftBlock = block_available(left, right);
+                gotLeftBlock = block_available(leftTaken, rightTaken, size);
                 if (gotLeftBlock) {
-                    leftBlock = get_block(&left);
+                    leftBlock = get_left_block(left, &leftTaken);
                 }
                 // get your first right block
-                gotRightBlock = block_available(right, left);
+                gotRightBlock = block_available(leftTaken, rightTaken, size);
                 if (gotRightBlock) {
-                    rightBlock = get_block(&right);
+                    rightBlock = get_right_block(left, &rightTaken, size);
                 }
             }
             while (gotLeftBlock && gotRightBlock) {
-                int side = neutralize(leftBlock, rightBlock, p);
+                int side = neutralize(leftBlock, rightBlock, BLOCK_SIZE, p);
 #pragma omp critical
                 {
                     // try to get new blocks, depending on which side was completed in the neutralize call
                     switch (side) {
                         case BOTH:
                             ++leftCounter;
-                            gotLeftBlock = block_available(left, right);
+                            gotLeftBlock = block_available(leftTaken, rightTaken, size);
                             if (gotLeftBlock) {
-                                leftBlock = get_block(&left);
+                                leftBlock = get_left_block(left, &leftTaken);
                             }
                             // don't break, just continue with the RIGHT case to get a right block as well
                         case RIGHT:
                             ++rightCounter;
-                            gotRightBlock = block_available(right, left);
+                            gotRightBlock = block_available(leftTaken, rightTaken, size);
                             if (gotRightBlock) {
-                                rightBlock = get_block(&right);
+                                rightBlock = get_right_block(left, &rightTaken, size);
                             }
                             break;
                         case LEFT:
                             ++leftCounter;
-                            gotLeftBlock = block_available(left, right);
+                            gotLeftBlock = block_available(leftTaken, rightTaken, size);
                             if (gotLeftBlock) {
-                                leftBlock = get_block(&left);
+                                leftBlock = get_left_block(left, &leftTaken);
                             }
                             break;
                     }
@@ -122,7 +128,7 @@ namespace p_partition  {
             rn += rightCounter * BLOCK_SIZE;
         }
         *leftNeutralized = ln;
-        *rightNeutralized = ln;
+        *rightNeutralized = rn;
         return remainingBlocks;
     }
 }
