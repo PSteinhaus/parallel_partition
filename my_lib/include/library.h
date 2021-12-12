@@ -64,7 +64,6 @@ namespace p_partition  {
         return block;
     }
 
-    // TODO: creates iterators that go outside the vector (when used in neutralize()) sometimes...
     // returns the remaining blocks
     template <typename ForwardIt, typename UnaryPredicate>
     std::vector<ForwardIt> parallel_partition_phase(ForwardIt left, ForwardIt afterLast, UnaryPredicate p, int *leftNeutralized, int *rightNeutralized) {
