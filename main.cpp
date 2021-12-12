@@ -17,6 +17,7 @@ int main(int argc, char *argv[])
 
     for (int i=0; i<v.size(); i++)
         std::cout << v[i] << " ";
+    std::cout << std::endl;
 
     v = {4,8,7,6,5,4,3,2,1,0};
 
@@ -29,6 +30,13 @@ int main(int argc, char *argv[])
                                           &rightNeutralized);
     for (int i=0; i<v.size(); i++)
         std::cout << v[i] << " ";
+    std::cout << std::endl;
+
+    for (int i=0; i<remainingBlocks.size(); i++)
+        std::cout << *remainingBlocks[i] << " ";
+
+    std::cout << std::endl;
+    std::cout << leftNeutralized << " " << rightNeutralized << std::endl;
 }
 
 

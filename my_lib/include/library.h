@@ -34,7 +34,7 @@ namespace p_partition  {
             j++; right = std::next(right);
         } while ( i < blocksize && j < blocksize );
 
-        std::cout << i << " " << j << std::endl;
+        //std::cout << i << " " << j << std::endl;
         if (i == blocksize) {
             if (j == blocksize)
                 return BOTH;
@@ -59,7 +59,7 @@ namespace p_partition  {
 
     template <typename ForwardIt>
     ForwardIt get_right_block(ForwardIt leftBegin, int *rightTaken, int size) {
-        ForwardIt block = std::next(leftBegin, size - 1 - *rightTaken);
+        ForwardIt block = std::next(leftBegin, size - BLOCK_SIZE - *rightTaken);
         *rightTaken += BLOCK_SIZE;
         return block;
     }
