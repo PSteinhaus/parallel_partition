@@ -10,12 +10,10 @@ int main(int argc, char *argv[])
     int blocklength = 5;
     float pivot = 4.5;
 
-    //GetMax <int> (x,y);
-    std::cout << "test" << std::endl;
-    hello();
-    int ret = neutralize(v.begin(),v.end()-1,blocklength, pivot);
+    // test neutralize
+    int ret = neutralize(v.begin(),v.end()-5, blocklength, [pivot](const auto& em){ return em < pivot; });
 
-    std::cout << ret << std::endl;
+    std::cout << "ret = " << ret << std::endl;
 
     for (int i=0; i<v.size(); i++)
         std::cout << v[i] << " ";
