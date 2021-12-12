@@ -9,18 +9,20 @@ int neutralize(ForwardIt left, ForwardIt right, int blocksize, UnaryPredicate p)
     int i , j ;
     do {
         for (i = 0; i < blocksize; i++){
-            if (!p(*(left + i)))
+            left = std::next(left);
+            if (!p(*left))
                 break;
         }
         for (j = 0; j < blocksize; j++) {
-            if (p(*(right + j)))
+            right = std::next(right);
+            if (p(*right))
                 break;
         }
         if ((i == blocksize) || (j == blocksize)){
             break;
         }
 
-        std::swap(*(left + i), *(right + j));
+        std::swap(*left, *right);
         i++;
         j++;
     } while ( i < blocksize && j < blocksize );
