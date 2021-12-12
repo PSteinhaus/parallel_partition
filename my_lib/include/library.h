@@ -4,6 +4,7 @@
 #include <vector>
 #include <omp.h>
 #include <atomic>
+#include <mutex>
 
 namespace p_partition  {
     const int BOTH = 0;
@@ -68,19 +69,20 @@ namespace p_partition  {
     template <typename ForwardIt, typename UnaryPredicate>
     std::vector<ForwardIt> parallel_partition_phase(ForwardIt left, ForwardIt afterLast, UnaryPredicate p, int *leftNeutralized, int *rightNeutralized) {
         int leftTaken = 0, rightTaken = 0;  // Share two variables to count how many blocks have already been taken in by working threads from each side.
-                                            // This works as long as we take care that only one thread ever calls one function of the set
-                                            // (`get_left_block` and `get_right_block`) at the same time.    (we currently don't do that very well, see the TODO)
+                                            // This works as long as we take care that only one thread ever uses them at once.
         int size = std::distance(left, afterLast);
         int ln = 0, rn = 0;
         std::vector<ForwardIt> remainingBlocks;
+        std::mutex taken_mtx;   // This mutex protects the functions where leftTaken and rightTaken are read or modified.
 
 #pragma omp parallel reduction(+: ln, rn)
         {
             ForwardIt leftBlock, rightBlock;
             bool gotLeftBlock, gotRightBlock;
             int leftCounter = 0, rightCounter = 0;
-#pragma omp critical
-            {   // get your first left block
+            {
+                taken_mtx.lock();
+                // get your first left block
                 gotLeftBlock = block_available(leftTaken, rightTaken, size);
                 if (gotLeftBlock) {
                     leftBlock = get_left_block(left, &leftTaken);
@@ -90,36 +92,39 @@ namespace p_partition  {
                 if (gotRightBlock) {
                     rightBlock = get_right_block(left, &rightTaken, size);
                 }
+                taken_mtx.unlock();
             }
             while (gotLeftBlock && gotRightBlock) {
                 int side = neutralize(leftBlock, rightBlock, BLOCK_SIZE, p);
-                // TODO: this critical section is related to the previous one, so they should technically be protected by the same mutex
-#pragma omp critical
-                {
-                    // try to get new blocks, depending on which side was completed in the neutralize call
-                    switch (side) {
-                        case BOTH:
-                            ++leftCounter;
-                            gotLeftBlock = block_available(leftTaken, rightTaken, size);
-                            if (gotLeftBlock) {
-                                leftBlock = get_left_block(left, &leftTaken);
-                            }
-                            // don't break, just continue with the RIGHT case to get a right block as well
-                        case RIGHT:
-                            ++rightCounter;
-                            gotRightBlock = block_available(leftTaken, rightTaken, size);
-                            if (gotRightBlock) {
-                                rightBlock = get_right_block(left, &rightTaken, size);
-                            }
-                            break;
-                        case LEFT:
-                            ++leftCounter;
-                            gotLeftBlock = block_available(leftTaken, rightTaken, size);
-                            if (gotLeftBlock) {
-                                leftBlock = get_left_block(left, &leftTaken);
-                            }
-                            break;
-                    }
+                // try to get new blocks, depending on which side was completed in the neutralize call
+                switch (side) {
+                    case BOTH:
+                        ++leftCounter;
+                        taken_mtx.lock();
+                        gotLeftBlock = block_available(leftTaken, rightTaken, size);
+                        if (gotLeftBlock) {
+                            leftBlock = get_left_block(left, &leftTaken);
+                        }
+                        taken_mtx.unlock();
+                        // don't break, just continue with the RIGHT case to get a right block as well
+                    case RIGHT:
+                        ++rightCounter;
+                        taken_mtx.lock();
+                        gotRightBlock = block_available(leftTaken, rightTaken, size);
+                        if (gotRightBlock) {
+                            rightBlock = get_right_block(left, &rightTaken, size);
+                        }
+                        taken_mtx.unlock();
+                        break;
+                    case LEFT:
+                        ++leftCounter;
+                        taken_mtx.lock();
+                        gotLeftBlock = block_available(leftTaken, rightTaken, size);
+                        if (gotLeftBlock) {
+                            leftBlock = get_left_block(left, &leftTaken);
+                        }
+                        taken_mtx.unlock();
+                        break;
                 }
             }
 #pragma omp critical

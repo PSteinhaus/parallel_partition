@@ -19,7 +19,7 @@ int main(int argc, char *argv[])
         std::cout << v[i] << " ";
     std::cout << std::endl;
 
-    v = {4,8,7,6,5,4,3,2,1,0};
+    v = {9,8,7,6,5,4,3,2,1,0};
 
     // test parallel partition (phase one)  (block size is currently 2)
     int leftNeutralized, rightNeutralized;
@@ -32,10 +32,15 @@ int main(int argc, char *argv[])
         std::cout << v[i] << " ";
     std::cout << std::endl;
 
-    for (int i=0; i<remainingBlocks.size(); i++)
-        std::cout << *remainingBlocks[i] << " ";
+    for (int i=0; i<remainingBlocks.size(); i++) {
+        auto iter = remainingBlocks[i];
+        std::cout << "remaining: ";
+        for (int j = 0; j < p_partition::BLOCK_SIZE; j++) {
+            std::cout << iter[j] << " ";
+        }
+        std::cout << std::endl;
+    }
 
-    std::cout << std::endl;
     std::cout << leftNeutralized << " " << rightNeutralized << std::endl;
 }
 
