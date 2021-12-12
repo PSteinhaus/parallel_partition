@@ -67,7 +67,9 @@ namespace p_partition  {
     // returns the remaining blocks
     template <typename ForwardIt, typename UnaryPredicate>
     std::vector<ForwardIt> parallel_partition_phase(ForwardIt left, ForwardIt afterLast, UnaryPredicate p, int *leftNeutralized, int *rightNeutralized) {
-        int leftTaken = 0, rightTaken = 0;
+        int leftTaken = 0, rightTaken = 0;  // Share two variables to count how many blocks have already been taken in by working threads from each side.
+                                            // This works as long as we take care that only one thread ever calls one function of the set
+                                            // (`get_left_block` and `get_right_block`) at the same time.    (we currently don't do that very well, see the TODO)
         int size = std::distance(left, afterLast);
         int ln = 0, rn = 0;
         std::vector<ForwardIt> remainingBlocks;
@@ -91,6 +93,7 @@ namespace p_partition  {
             }
             while (gotLeftBlock && gotRightBlock) {
                 int side = neutralize(leftBlock, rightBlock, BLOCK_SIZE, p);
+                // TODO: this critical section is related to the previous one, so they should technically be protected by the same mutex
 #pragma omp critical
                 {
                     // try to get new blocks, depending on which side was completed in the neutralize call
