@@ -5,6 +5,8 @@
 #include <omp.h>
 #include <atomic>
 #include <mutex>
+#include <cstdlib>
+
 
 namespace p_partition  {
     const int BOTH = 0;
@@ -44,7 +46,7 @@ namespace p_partition  {
         return RIGHT;
     }
 
-    const int BLOCK_SIZE = 2;
+
 
     inline
     bool block_available(int leftTaken, int rightTaken, int size) {
@@ -52,22 +54,22 @@ namespace p_partition  {
     }
 
     template <typename ForwardIt>
-    ForwardIt get_left_block(ForwardIt leftBegin, int *leftTaken) {
+    ForwardIt get_left_block(ForwardIt leftBegin, int *leftTaken, int blockSize) {
         ForwardIt block = std::next(leftBegin, *leftTaken);
-        *leftTaken += BLOCK_SIZE;
+        *leftTaken += blockSize;
         return block;
     }
 
     template <typename ForwardIt>
-    ForwardIt get_right_block(ForwardIt leftBegin, int *rightTaken, int size) {
-        ForwardIt block = std::next(leftBegin, size - BLOCK_SIZE - *rightTaken);
-        *rightTaken += BLOCK_SIZE;
+    ForwardIt get_right_block(ForwardIt leftBegin, int *rightTaken, int size, int blockSize) {
+        ForwardIt block = std::next(leftBegin, size - blockSize - *rightTaken);
+        *rightTaken += blockSize;
         return block;
     }
 
     // returns the remaining blocks
     template <typename ForwardIt, typename UnaryPredicate>
-    std::vector<ForwardIt> parallel_partition_phase(ForwardIt left, ForwardIt afterLast, UnaryPredicate p, int *leftNeutralized, int *rightNeutralized) {
+    std::vector<ForwardIt> parallel_partition_phase(ForwardIt left, ForwardIt afterLast, UnaryPredicate p, int *leftNeutralized, int *rightNeutralized, int blockSize, int numThreads) {
         int leftTaken = 0, rightTaken = 0;  // Share two variables to count how many blocks have already been taken in by working threads from each side.
                                             // This works as long as we take care that only one thread ever uses them at once.
         int size = std::distance(left, afterLast);
@@ -75,8 +77,9 @@ namespace p_partition  {
         std::vector<ForwardIt> remainingBlocks;
         std::mutex taken_mtx;   // This mutex protects the functions where leftTaken and rightTaken are read or modified.
 
-#pragma omp parallel reduction(+: ln, rn)
+#pragma omp parallel reduction(+: ln, rn) num_threads(numThreads)
         {
+
             ForwardIt leftBlock, rightBlock;
             bool gotLeftBlock, gotRightBlock;
             int leftCounter = 0, rightCounter = 0;
@@ -85,17 +88,17 @@ namespace p_partition  {
                 // get your first left block
                 gotLeftBlock = block_available(leftTaken, rightTaken, size);
                 if (gotLeftBlock) {
-                    leftBlock = get_left_block(left, &leftTaken);
+                    leftBlock = get_left_block(left, &leftTaken, blockSize);
                 }
                 // get your first right block
                 gotRightBlock = block_available(leftTaken, rightTaken, size);
                 if (gotRightBlock) {
-                    rightBlock = get_right_block(left, &rightTaken, size);
+                    rightBlock = get_right_block(left, &rightTaken, size, blockSize);
                 }
                 taken_mtx.unlock();
             }
             while (gotLeftBlock && gotRightBlock) {
-                int side = neutralize(leftBlock, rightBlock, BLOCK_SIZE, p);
+                int side = neutralize(leftBlock, rightBlock, blockSize, p);
                 // try to get new blocks, depending on which side was completed in the neutralize call
                 switch (side) {
                     case BOTH:
@@ -103,7 +106,7 @@ namespace p_partition  {
                         taken_mtx.lock();
                         gotLeftBlock = block_available(leftTaken, rightTaken, size);
                         if (gotLeftBlock) {
-                            leftBlock = get_left_block(left, &leftTaken);
+                            leftBlock = get_left_block(left, &leftTaken, blockSize);
                         }
                         taken_mtx.unlock();
                         // don't break, just continue with the RIGHT case to get a right block as well
@@ -112,7 +115,7 @@ namespace p_partition  {
                         taken_mtx.lock();
                         gotRightBlock = block_available(leftTaken, rightTaken, size);
                         if (gotRightBlock) {
-                            rightBlock = get_right_block(left, &rightTaken, size);
+                            rightBlock = get_right_block(left, &rightTaken, size, blockSize);
                         }
                         taken_mtx.unlock();
                         break;
@@ -121,7 +124,7 @@ namespace p_partition  {
                         taken_mtx.lock();
                         gotLeftBlock = block_available(leftTaken, rightTaken, size);
                         if (gotLeftBlock) {
-                            leftBlock = get_left_block(left, &leftTaken);
+                            leftBlock = get_left_block(left, &leftTaken, blockSize);
                         }
                         taken_mtx.unlock();
                         break;
@@ -132,13 +135,32 @@ namespace p_partition  {
                 if (gotLeftBlock) remainingBlocks.push_back(leftBlock);
                 if (gotRightBlock) remainingBlocks.push_back(rightBlock);
             }
-            ln += leftCounter * BLOCK_SIZE;
-            rn += rightCounter * BLOCK_SIZE;
+            ln += leftCounter * blockSize;
+            rn += rightCounter * blockSize;
         }
         *leftNeutralized = ln;
         *rightNeutralized = rn;
         return remainingBlocks;
     }
+
+
+    // test func for nested parallelism
+    void testFunc(){
+        omp_set_nested(2);
+
+#pragma omp parallel for num_threads(5)
+        for(int i = 0; i< 5 ; i++){
+#pragma omp parallel for num_threads(2)
+            for(int j = 0; j<2; j++) {
+                int tid = omp_get_thread_num();
+                int num = omp_get_num_threads();
+                printf("Hello world from omp thread %d %d\n", tid, num);
+                _sleep(3000);
+            }
+        }
+    }
+
+
 }
 
 #endif //PARALLEL_PARTITION_LIBRARY_H
