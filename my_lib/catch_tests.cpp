@@ -1,6 +1,7 @@
 #include "catch.h"
 #include "library.h"
 #include <vector>
+#include <random>
 
 TEST_CASE("test neutralize", "[correctness]"){
     std::vector<float> v = {4,8,7,6,5,4,3,2,1,0};
@@ -16,21 +17,29 @@ TEST_CASE("test neutralize", "[correctness]"){
 
 }
 
-TEST_CASE("test parallel_partition Phase1 ", "[correctness]"){
-    std::vector<float> v = {9,8,7,6,5,4,3,2,1,0};
-    std::vector<float> expected = {0,1,2,3,4,5,6,7,8,9};
-    float pivot = 4.5;
+TEST_CASE("test parallel_partition", "[correctness]"){
+    int numberOfValues = 50;
+
+    std::vector<float> v(numberOfValues);
+    std::generate(v.begin(), v.end(), []() {
+        return rand() % 100;
+    });
+
+    float pivot = 50;
 
     // test neutralize
     int leftNeutralized, rightNeutralized;
-    p_partition::parallel_partition_phase(v.begin(),
-                                          v.end(),
-                                          [pivot](const auto& em){ return em < pivot; },
-                                          &leftNeutralized,
-                                          &rightNeutralized,
-                                          1,1);
+    p_partition::parallel_partition(v.begin(),
+                                    v.end(),
+                                    [pivot](const auto& em){ return em < pivot; },
+                                    12);
+
+    for (auto i: v)
+        std::cout << i << ' ';
+    std::cout<< std::endl;
+
     for (int i=0; i<v.size(); i++){
-        REQUIRE(v[i] == expected[i]);
+        REQUIRE(v[i] == 1);
     }
 
 }
