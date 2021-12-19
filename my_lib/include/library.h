@@ -77,65 +77,68 @@ namespace p_partition  {
         return block;
     }
 
+    bool get_left_block_from_remaining(std::vector<int> *remainingBlocks, int ln, int *left){
+        std::vector<int>::iterator remBegin = (*remainingBlocks).begin(), remEnd = (*remainingBlocks).end();
+        if(!(*remainingBlocks).empty()) {
+            while (true) {
+                if (*remBegin < ln) {
+                    *left = *remBegin;
+                    (*remainingBlocks).erase(remBegin);
+                    return true;
+                }
+                //check if List ended
+                if (std::distance(remBegin, remEnd) > 1) {
+                    remBegin = std::next(remBegin);
+                } else { return false; }
+            }
+        }
+        return false;
+    }
+
+    bool get_right_block_from_remaining(std::vector<int> *remainingBlocks, int rn, int *right){
+        std::vector<int>::iterator remBegin = (*remainingBlocks).begin(), remEnd = (*remainingBlocks).end();
+        if(!(*remainingBlocks).empty()) {
+            while (true) {
+                if (*remBegin >= rn) {
+                    *right = *remBegin;
+                    (*remainingBlocks).erase(remBegin);
+                    return true;
+                } else if (std::distance(remBegin, remEnd) > 1) {
+                    remBegin = std::next(remBegin);
+                } else { return false; }
+            }
+        }
+        return false;
+    }
 
     int get_blocks_from_remaining(std::vector<int> *remainingBlocks, int ln, int rn, int *left, int *right){
-        int blockPos;
-        int foundBlocks = NONE;
-        bool foundLeft = false, foundRight = false;
-        std::vector<int>::iterator remBegin = (*remainingBlocks).begin(), remEnd = (*remainingBlocks).end();
+        bool foundBlock = false;
 
-        //go through remainingBlocks and try to find a block for left and right
-        while (foundBlocks != LEFT) {
-            if (*remBegin < ln && foundBlocks != LEFT) {
-                *left = *remBegin;
-                //std::cout << "found Left: " << *left << std::endl;
-                (*remainingBlocks).erase(remBegin);
-                foundBlocks = LEFT;
-            }
-
-            //check if List ended
-            else if (std::distance(remBegin, remEnd) > 1) {
-                remBegin = std::next(remBegin);
-            }
-            else{break;}
+        foundBlock = get_left_block_from_remaining(remainingBlocks, ln, left);
+        if(foundBlock == false){return false;}
+        foundBlock = get_right_block_from_remaining(remainingBlocks, rn, right);
+        if(foundBlock == false){
+            (*remainingBlocks).push_back(*left);
+            return false;
         }
-        remBegin = (*remainingBlocks).begin();
-        remEnd = (*remainingBlocks).end();
-        while((foundBlocks != RIGHT) && (foundBlocks != BOTH)){
-            if (*remBegin > rn && foundBlocks != RIGHT) {
-                *right = *remBegin;
-                //std::cout << "found Right: "<< *right << std::endl;
-                (*remainingBlocks).erase(remBegin);
-                if(foundBlocks == LEFT){foundBlocks = BOTH;}
-                else{foundBlocks = RIGHT;}
-            }
-            else if(std::distance(remBegin, remEnd) > 1) {
-                remBegin = std::next(remBegin);
-            }
-            else{break;}
-        }
-        return foundBlocks;
+        return true;
     }
 
 
     // returns the remaining blocks
     template <typename ForwardIt, typename UnaryPredicate>
-    void parallel_partition(ForwardIt left, ForwardIt afterLast, UnaryPredicate p, int numThreads) {
+    std::vector<int> parallel_partition_phase_one(ForwardIt left, ForwardIt afterLast, UnaryPredicate p, int numThreads, int size, int blockSize, int* leftNeutralized, int *rightNeutralized) {
         int leftTaken = 0, rightTaken = 0;  // Share two variables to count how many blocks have already been taken in by working threads from each side.
-                                            // This works as long as we take care that only one thread ever uses them at once.
-        int size = std::distance(left, afterLast);
+        // This works as long as we take care that only one thread ever uses them at once.
         int ln = 0, rn = 0;
-        int blockSize = 3; // TODO find a way to calculate a good blookSize
 
-        //TODO maybe use long to make user there is no overflow on big arrays
-        std::vector<int> remainingBlocks; //TODO maybe use std::list ?
+        std::vector<int> remainingBlocks;
         std::mutex taken_mtx;   // This mutex protects the functions where leftTaken and rightTaken are read or modified.
 
-        //Phase 1
 
 #pragma omp parallel reduction(+: ln, rn) num_threads(numThreads)
         {
-            if(omp_get_thread_num() == 1){
+            if (omp_get_thread_num() == 1) {
                 std::cout << "number of threads: " << omp_get_num_threads() << std::endl;
             }
 
@@ -198,100 +201,127 @@ namespace p_partition  {
 #pragma omp critical
             {
                 if (gotLeftBlock) remainingBlocks.push_back(posLeftBlock);
-                if (gotRightBlock) remainingBlocks.push_back(size-posRightBlock);
+                if (gotRightBlock) remainingBlocks.push_back(size - posRightBlock-blockSize);
             }
             ln += leftCounter * blockSize;
             rn += rightCounter * blockSize;
         }
+        *leftNeutralized = ln;
+        *rightNeutralized = rn;
 
-        //print some info
-        std::cout << "size remBlock: " << remainingBlocks.size() << std::endl;
-        std::cout << "ln: "<< ln << " rn: " << size- rn<< std::endl;
-        std::cout << "all remaining Blocks: ";
-        for (auto i: remainingBlocks)
-            std::cout << i << ' ';
-        std::cout<< std::endl;
+        return remainingBlocks;
+    }
 
-        //start Phase 2
-        int gotBlocks = BOTH;
+    template <typename ForwardIt, typename UnaryPredicate>
+    void parallel_partition_phase_two(ForwardIt left, ForwardIt afterLast, UnaryPredicate p, int size, int blockSize, int ln, int rn, std::vector<int> remainingBlocks){
+
+        bool gotBlocks;
         int leftFromRemaining, rightFromRemaining;
-        int usedBlocksLeft = ln, usedBlocksRight = size-rn-blockSize;
         ForwardIt leftBlock, rightBlock;
+        int blockPos;
 
+        //try to get left and right block and neutralize both
+        gotBlocks = get_blocks_from_remaining(&remainingBlocks, ln, size-rn, &leftFromRemaining,
+                                              &rightFromRemaining);
+        while(gotBlocks == true) {
+            blockPos = leftFromRemaining;
+            std::cout << "leftBlockPos: " << blockPos << std::endl;
+            leftBlock = get_left_block(left, &blockPos, blockSize);
 
-        while(gotBlocks != NONE) {
-            gotBlocks = NONE;
-            if (!remainingBlocks.empty()) {
-                gotBlocks = get_blocks_from_remaining(&remainingBlocks, ln, size - rn, &leftFromRemaining,
-                                                &rightFromRemaining);
-            }
-            //get the actual blocks
-            if (gotBlocks == LEFT || gotBlocks == BOTH) {
-                int blockPos = leftFromRemaining;
-                std::cout << "leftBlockPos: " <<blockPos << std::endl;
-                leftBlock = get_left_block(left, &blockPos, blockSize);
-            }
-            if (gotBlocks == RIGHT || gotBlocks == BOTH) {
-                int blockPos = rightFromRemaining - blockSize;
-                std::cout << "rightBlockPos: " <<blockPos << std::endl;
-                rightBlock = get_left_block(left, &blockPos, blockSize);
-            }
+            blockPos = rightFromRemaining;
+            std::cout << "rightBlockPos: " << blockPos << std::endl;
+            rightBlock = get_left_block(left, &blockPos, blockSize);
 
-            //TODO possible optimise to only get the missing Block after neutralize;
-            if (gotBlocks == BOTH) {
-                int side = neutralize(leftBlock, rightBlock, blockSize, p);
-                switch (side) {
-                    case BOTH:
-                        ln += blockSize;
-                        rn += blockSize;
-                        break;
-                    case RIGHT:
-                        rn += blockSize;
-                        remainingBlocks.push_back(leftFromRemaining);
-                        break;
-                    case LEFT:
-                        ln += blockSize;
-                        remainingBlocks.push_back(rightFromRemaining);
-                        break;
-                }
+            int side = neutralize(leftBlock, rightBlock, blockSize, p);
+            switch (side) {
+                case BOTH:
+                    ln += blockSize;
+                    rn += blockSize;
+                    break;
+                case RIGHT:
+                    rn += blockSize;
+                    remainingBlocks.push_back(leftFromRemaining);
+                    break;
+                case LEFT:
+                    ln += blockSize;
+                    remainingBlocks.push_back(rightFromRemaining);
+                    break;
             }
-            if(gotBlocks == LEFT){
-                int pos = usedBlocksLeft;
-                while(std::find(remainingBlocks.begin(), remainingBlocks.end(), pos) != remainingBlocks.end()){
-                    pos += blockSize;
-                }
-                std::cout << "left swap with pos: " << pos << std::endl;
-                rightBlock = get_left_block(left, &pos, blockSize);
-                std::cout << "leftBlock: " << *leftBlock << " rightBlock: " << *rightBlock << std::endl;
-                //swapBlocks(leftBlock, rightBlock,blockSize);
-                usedBlocksLeft += blockSize;
-            }
-            if(gotBlocks == RIGHT){
-                int pos = usedBlocksRight;
-                std::cout << "start search: "<< pos << std::endl;
-                while(std::find(remainingBlocks.begin(), remainingBlocks.end(), pos) != remainingBlocks.end()){
-                    pos -= blockSize;
-                }
-                std::cout << "right swap with pos: " << pos << std::endl;
-                rightBlock = get_left_block(left, &pos, blockSize);
-                std::cout << "leftBlock: " << *leftBlock << " rightBlock: " << *rightBlock << std::endl;
-                //swapBlocks(leftBlock, rightBlock,blockSize);
-                usedBlocksRight -= blockSize;
-            }
-
+            gotBlocks = get_blocks_from_remaining(&remainingBlocks, ln, size-rn, &leftFromRemaining,
+                                                  &rightFromRemaining);
         }
 
+        int usedBlocksLeft = ln, usedBlocksRight = size-rn-blockSize;
+        std::cout << "ln: " << ln << " rn: " << size - rn << std::endl;
+
+        //try to get left block for swap
+        gotBlocks = get_left_block_from_remaining(&remainingBlocks, ln, &leftFromRemaining);
+        while(gotBlocks == true){
+
+
+            //get left Block
+            blockPos = leftFromRemaining;
+            std::cout << "leftBlockPos: " << blockPos << std::endl;
+            leftBlock = get_left_block(left, &blockPos, blockSize);
+
+            //get right Block
+            int pos = usedBlocksLeft;
+            while(std::find(remainingBlocks.begin(), remainingBlocks.end(), pos) != remainingBlocks.end()){
+                pos += blockSize;
+            }
+            std::cout << "left swap with pos: " << pos << std::endl;
+            rightBlock = get_left_block(left, &pos, blockSize);
+
+            //swap
+            for(int i = 0; i< blockSize; i++){
+                std::cout << "leftBlock: " << *leftBlock << " rightBlock: " << *rightBlock << std::endl;
+                std::swap(*leftBlock, *rightBlock);
+                leftBlock = std::next(leftBlock);
+                rightBlock = std::next(rightBlock);
+            }
+            usedBlocksLeft += blockSize;
+            gotBlocks = get_left_block_from_remaining(&remainingBlocks, ln, &leftFromRemaining);
+        }
+
+        //try to get right block for swap
+        gotBlocks = get_right_block_from_remaining(&remainingBlocks, size-rn, &rightFromRemaining);
+        while(gotBlocks == true) {
+            //get right Block
+            blockPos = rightFromRemaining;
+            std::cout << "rightBlockPos: " << blockPos << std::endl;
+            rightBlock = get_left_block(left, &blockPos, blockSize);
+
+            //get left Block
+            int pos = usedBlocksRight;
+            while(std::find(remainingBlocks.begin(), remainingBlocks.end(), pos) != remainingBlocks.end()){
+                pos -= blockSize;
+            }
+            std::cout << "right swap with pos: " << pos << std::endl;
+            leftBlock = get_left_block(left, &pos, blockSize);
+
+            //swap
+            for(int i = 0; i< blockSize; i++){
+                std::cout << "leftBlock: " << *leftBlock << " rightBlock: " << *rightBlock << std::endl;
+                std::swap(*leftBlock, *rightBlock);
+                leftBlock = std::next(leftBlock);
+                rightBlock = std::next(rightBlock);
+            }
+            usedBlocksRight -= blockSize;
+            gotBlocks = get_right_block_from_remaining(&remainingBlocks, size-rn, &rightFromRemaining);
+        }
+
+
         std::cout << "all remaining Blocks: ";
         for (auto i: remainingBlocks)
             std::cout << i << ' ';
         std::cout<< std::endl;
 
-        std::cout << "ln: " << ln << " rn: " << size - rn << std::endl;
+
+
 
         //sort remaining values
-
         ForwardIt leftIt = std::next(left,ln-1);
-        ForwardIt rightIt = std::next(left, size-rn-1);
+        ForwardIt rightIt = std::next(left, size-rn);
 
         std::partition(leftIt, rightIt, p);
 
@@ -299,6 +329,60 @@ namespace p_partition  {
 
     }
 
+    template <typename ForwardIt, typename UnaryPredicate>
+    void parallel_partition(ForwardIt left, ForwardIt afterLast, UnaryPredicate p, int numThreads){
+        //TODO maybe use long to make user there is no overflow on big arrays
+        int size = std::distance(left, afterLast);
+        int ln, rn;
+
+        // TODO find a way to calculate a good blookSize
+        int blockSize = 3;
+
+
+        //TODO maybe use list ?
+        //TODO maybe only give pointers to functions
+        std::vector<int> remainingBlocks;
+
+        //print array
+        std::cout << "all elements in Input: ";
+        ForwardIt temp = left;
+        while(temp != afterLast){
+            std::cout << *temp << ' ';
+            temp = std::next(temp);
+        }
+        std::cout << std::endl;
+
+
+        remainingBlocks = parallel_partition_phase_one(left, afterLast, p, numThreads, size, blockSize, &ln, &rn);
+
+        //print some info
+        std::cout << std::endl;
+        std::cout << "ln: "<< ln << " rn: " << size- rn<< std::endl;
+        std::cout << "all remaining Blocks: ";
+        for (auto i: remainingBlocks)
+            std::cout << i << ' ';
+        std::cout<< std::endl;
+
+        //print array
+        std::cout << "all elements in Input: ";
+        temp = left;
+        while(temp != afterLast){
+            std::cout << *temp << ' ';
+            temp = std::next(temp);
+        }
+        std::cout << std::endl;
+
+        parallel_partition_phase_two(left, afterLast, p, size, blockSize, ln, rn, remainingBlocks);
+
+        //print array
+        std::cout << std::endl;
+        std::cout << "all elements in Input: ";
+        temp = left;
+        while(temp != afterLast){
+            std::cout << *temp << ' ';
+            temp = std::next(temp);
+        }
+    }
 
 
 
