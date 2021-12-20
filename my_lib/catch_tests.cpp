@@ -41,7 +41,7 @@ TEST_CASE("test parallel_partition", "[correctness]"){
 TEST_CASE("test parallel_partition_phase_1", "[correctness]"){
     int numberOfValues = 50;
     int numThreads = 12;
-    int blockSize = 3;
+    int blockSize = 6;
     float pivot = 50;
     int ln, rn;
 
@@ -53,14 +53,41 @@ TEST_CASE("test parallel_partition_phase_1", "[correctness]"){
         return rand() % 100;
     });
 
+    //print array
+    std::cout << "all elements in Input: ";
+    auto temp = v.begin();
+    while(temp != v.end()){
+        std::cout << *temp << ' ';
+        temp = std::next(temp);
+    }
+    std::cout << std::endl;
+
     remainingBlocks = p_partition::parallel_partition_phase_one(v.begin(),v.end(), [pivot](const auto& em){ return em < pivot; },
                                               numThreads, numberOfValues, blockSize, &ln,&rn);
+
+    //print some info
+    std::cout << std::endl;
+    std::cout << "ln: "<< ln << " rn: " << numberOfValues- rn<< std::endl;
+    std::cout << "all remaining Blocks: ";
+    for (auto i: remainingBlocks)
+        std::cout << i << ' ';
+    std::cout<< std::endl;
+
+    //print array
+    std::cout << "all elements in Output: ";
+    temp = v.begin();
+    while(temp != v.end()){
+        std::cout << *temp << ' ';
+        temp = std::next(temp);
+    }
+    std::cout << std::endl;
 
     for (int i=0; i<ln; i+= blockSize){
         bool inRemaining =  std::find(remainingBlocks.begin(), remainingBlocks.end(), i) != remainingBlocks.end();
         //not in remaining => values < pivot
         if(!inRemaining){
             for (int j=0; j<blockSize; j++) {
+
                 REQUIRE(v[i + j] < pivot);
             }
         }

@@ -124,6 +124,8 @@ namespace p_partition  {
     }
 
 
+#pragma clang diagnostic push
+#pragma ide diagnostic ignored "openmp-use-default-none"
     // returns the remaining blocks
     template <typename ForwardIt, typename UnaryPredicate>
     std::vector<int> parallel_partition_phase_one(ForwardIt left, ForwardIt afterLast, UnaryPredicate p, int numThreads, int size, int blockSize, int* leftNeutralized, int *rightNeutralized) {
@@ -133,7 +135,6 @@ namespace p_partition  {
 
         std::vector<int> remainingBlocks;
         std::mutex taken_mtx;   // This mutex protects the functions where leftTaken and rightTaken are read or modified.
-
 
 #pragma omp parallel reduction(+: ln, rn) num_threads(numThreads)
         {
@@ -145,6 +146,8 @@ namespace p_partition  {
             bool gotLeftBlock, gotRightBlock;
             int leftCounter = 0, rightCounter = 0;
             int posLeftBlock, posRightBlock;
+            // DEBUG
+            int t_num = omp_get_thread_num();
             {
                 taken_mtx.lock();
                 // get your first left block
@@ -152,12 +155,16 @@ namespace p_partition  {
                 if (gotLeftBlock) {
                     posLeftBlock = leftTaken;
                     leftBlock = get_left_block(left, &leftTaken, blockSize);
+                    // DEBUG
+                    std::cout << "thread "<< t_num << " took left block: " << posLeftBlock << std::endl;
                 }
                 // get your first right block
                 gotRightBlock = block_available(leftTaken, rightTaken, size);
                 if (gotRightBlock) {
                     posRightBlock = rightTaken;
                     rightBlock = get_right_block(left, &rightTaken, size, blockSize);
+                    // DEBUG
+                    std::cout << "thread "<< t_num << " took right block: " <<  size - posRightBlock - blockSize << std::endl;
                 }
                 taken_mtx.unlock();
             }
@@ -168,30 +175,42 @@ namespace p_partition  {
                     case BOTH:
                         ++leftCounter;
                         taken_mtx.lock();
+                        // DEBUG
+                        std::cout << "thread "<< t_num << " finished left block: " << posLeftBlock << std::endl;
                         gotLeftBlock = block_available(leftTaken, rightTaken, size);
                         if (gotLeftBlock) {
                             posLeftBlock = leftTaken;
                             leftBlock = get_left_block(left, &leftTaken, blockSize);
+                            // DEBUG
+                            std::cout << "thread "<< t_num << " took left block: " << posLeftBlock << std::endl;
                         }
                         taken_mtx.unlock();
                         // don't break, just continue with the RIGHT case to get a right block as well
                     case RIGHT:
                         ++rightCounter;
                         taken_mtx.lock();
+                        // DEBUG
+                        std::cout << "thread "<< t_num << " finished right block: " << size - posRightBlock - blockSize << std::endl;
                         gotRightBlock = block_available(leftTaken, rightTaken, size);
                         if (gotRightBlock) {
                             posRightBlock = rightTaken;
                             rightBlock = get_right_block(left, &rightTaken, size, blockSize);
+                            // DEBUG
+                            std::cout << "thread "<< t_num << " took right block: " <<  size - posRightBlock - blockSize << std::endl;
                         }
                         taken_mtx.unlock();
                         break;
                     case LEFT:
                         ++leftCounter;
                         taken_mtx.lock();
+                        // DEBUG
+                        std::cout << "thread "<< t_num << " finished left block: " << posLeftBlock << std::endl;
                         gotLeftBlock = block_available(leftTaken, rightTaken, size);
                         if (gotLeftBlock) {
                             posLeftBlock = leftTaken;
                             leftBlock = get_left_block(left, &leftTaken, blockSize);
+                            // DEBUG
+                            std::cout << "thread "<< t_num << " took left block: " << posLeftBlock << std::endl;
                         }
                         taken_mtx.unlock();
                         break;
@@ -210,6 +229,7 @@ namespace p_partition  {
 
         return remainingBlocks;
     }
+#pragma clang diagnostic pop
 
     template <typename ForwardIt, typename UnaryPredicate>
     void parallel_partition_phase_two(ForwardIt left, ForwardIt afterLast, UnaryPredicate p, int size, int blockSize, int ln, int rn, std::vector<int> remainingBlocks){
