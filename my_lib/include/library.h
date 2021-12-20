@@ -58,8 +58,8 @@ namespace p_partition  {
 
 
     inline
-    bool block_available(int leftTaken, int rightTaken, int size) {
-        return leftTaken + rightTaken < size;
+    bool block_available(int leftTaken, int rightTaken, int size, int blockSize) {
+        return size - (leftTaken + rightTaken) >= blockSize;
     }
 
     template <typename ForwardIt>
@@ -151,7 +151,7 @@ namespace p_partition  {
             {
                 taken_mtx.lock();
                 // get your first left block
-                gotLeftBlock = block_available(leftTaken, rightTaken, size);
+                gotLeftBlock = block_available(leftTaken, rightTaken, size, blockSize);
                 if (gotLeftBlock) {
                     posLeftBlock = leftTaken;
                     leftBlock = get_left_block(left, &leftTaken, blockSize);
@@ -159,7 +159,7 @@ namespace p_partition  {
                     std::cout << "thread "<< t_num << " took left block: " << posLeftBlock << std::endl;
                 }
                 // get your first right block
-                gotRightBlock = block_available(leftTaken, rightTaken, size);
+                gotRightBlock = block_available(leftTaken, rightTaken, size, blockSize);
                 if (gotRightBlock) {
                     posRightBlock = rightTaken;
                     rightBlock = get_right_block(left, &rightTaken, size, blockSize);
@@ -177,7 +177,7 @@ namespace p_partition  {
                         taken_mtx.lock();
                         // DEBUG
                         std::cout << "thread "<< t_num << " finished left block: " << posLeftBlock << std::endl;
-                        gotLeftBlock = block_available(leftTaken, rightTaken, size);
+                        gotLeftBlock = block_available(leftTaken, rightTaken, size, blockSize);
                         if (gotLeftBlock) {
                             posLeftBlock = leftTaken;
                             leftBlock = get_left_block(left, &leftTaken, blockSize);
@@ -191,7 +191,7 @@ namespace p_partition  {
                         taken_mtx.lock();
                         // DEBUG
                         std::cout << "thread "<< t_num << " finished right block: " << size - posRightBlock - blockSize << std::endl;
-                        gotRightBlock = block_available(leftTaken, rightTaken, size);
+                        gotRightBlock = block_available(leftTaken, rightTaken, size, blockSize);
                         if (gotRightBlock) {
                             posRightBlock = rightTaken;
                             rightBlock = get_right_block(left, &rightTaken, size, blockSize);
@@ -205,7 +205,7 @@ namespace p_partition  {
                         taken_mtx.lock();
                         // DEBUG
                         std::cout << "thread "<< t_num << " finished left block: " << posLeftBlock << std::endl;
-                        gotLeftBlock = block_available(leftTaken, rightTaken, size);
+                        gotLeftBlock = block_available(leftTaken, rightTaken, size, blockSize);
                         if (gotLeftBlock) {
                             posLeftBlock = leftTaken;
                             leftBlock = get_left_block(left, &leftTaken, blockSize);
