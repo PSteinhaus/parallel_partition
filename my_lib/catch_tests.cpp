@@ -68,13 +68,8 @@ TEST_CASE("test parallel_partition_phase1", "[correctness]"){
                 REQUIRE(v[i + j] < pivot);
             }
         }
-        //in remainig => at least one value > pivot
         else{
-            bool temp = false;
-            for (int j=0; j<blockSize; j++) {
-                temp = temp || (v[i+j] > pivot);
-            }
-            REQUIRE(temp);
+            ln += blockSize;
         }
     }
 
@@ -87,13 +82,8 @@ TEST_CASE("test parallel_partition_phase1", "[correctness]"){
                 REQUIRE(v[pos + j] > pivot);
             }
         }
-            //in remainig => at least one value < pivot
         else{
-            bool temp = false;
-            for (int j=0; j<blockSize; j++) {
-                temp = temp || (v[pos+j] < pivot);
-            }
-            REQUIRE(temp);
+            rn += blockSize;
         }
     }
 }
