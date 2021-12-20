@@ -69,7 +69,6 @@ namespace p_partition  {
         return block;
     }
 
-    //TODO maybe use prev instead of next for faster runtime
     template <typename ForwardIt>
     ForwardIt get_right_block(ForwardIt leftBegin, int *rightTaken, int size, int blockSize) {
         ForwardIt block = std::next(leftBegin, size - blockSize - *rightTaken);
@@ -252,7 +251,7 @@ namespace p_partition  {
         }
 
         int usedBlocksLeft = ln, usedBlocksRight = size-rn-blockSize;
-        std::cout << "ln: " << ln << " rn: " << size - rn << std::endl;
+        std::cout << "ln: " << ln << " rn: " << rn << std::endl;
 
         //try to get left block for swap
         gotBlocks = get_left_block_from_remaining(&remainingBlocks, ln, &leftFromRemaining);
@@ -266,9 +265,11 @@ namespace p_partition  {
 
             //get right Block
             int pos = usedBlocksLeft;
-            while(std::find(remainingBlocks.begin(), remainingBlocks.end(), pos) != remainingBlocks.end()){
-                pos += blockSize;
+            int shift = 0;
+            while(std::find(remainingBlocks.begin(), remainingBlocks.end(), pos+shift) != remainingBlocks.end()){
+                shift += blockSize;
             }
+            pos = pos + shift;
             std::cout << "left swap with pos: " << pos << std::endl;
             rightBlock = get_left_block(left, &pos, blockSize);
 
@@ -279,7 +280,7 @@ namespace p_partition  {
                 leftBlock = std::next(leftBlock);
                 rightBlock = std::next(rightBlock);
             }
-            usedBlocksLeft += blockSize;
+            usedBlocksLeft += shift+blockSize;
             gotBlocks = get_left_block_from_remaining(&remainingBlocks, ln, &leftFromRemaining);
         }
 
@@ -293,9 +294,11 @@ namespace p_partition  {
 
             //get left Block
             int pos = usedBlocksRight;
-            while(std::find(remainingBlocks.begin(), remainingBlocks.end(), pos) != remainingBlocks.end()){
-                pos -= blockSize;
+            int shift = 0;
+            while(std::find(remainingBlocks.begin(), remainingBlocks.end(), pos-shift) != remainingBlocks.end()){
+                shift = blockSize;
             }
+            pos = pos-shift;
             std::cout << "right swap with pos: " << pos << std::endl;
             leftBlock = get_left_block(left, &pos, blockSize);
 
@@ -306,7 +309,7 @@ namespace p_partition  {
                 leftBlock = std::next(leftBlock);
                 rightBlock = std::next(rightBlock);
             }
-            usedBlocksRight -= blockSize;
+            usedBlocksRight -= shift+blockSize;
             gotBlocks = get_right_block_from_remaining(&remainingBlocks, size-rn, &rightFromRemaining);
         }
 
@@ -357,7 +360,7 @@ namespace p_partition  {
 
         //print some info
         std::cout << std::endl;
-        std::cout << "ln: "<< ln << " rn: " << size- rn<< std::endl;
+        std::cout << "ln: "<< ln << " rn: " << rn << std::endl;
         std::cout << "all remaining Blocks: ";
         for (auto i: remainingBlocks)
             std::cout << i << ' ';
