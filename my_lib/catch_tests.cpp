@@ -17,7 +17,7 @@ TEST_CASE("test neutralize", "[correctness]"){
 
 }
 
-TEST_CASE("test parallel_partition", "[correctness]"){
+TEST_CASE("test partition", "[correctness]"){
     int numberOfValues = 50;
     float pivot = 50;
 
@@ -28,10 +28,10 @@ TEST_CASE("test parallel_partition", "[correctness]"){
     std::vector<float> expected = v;
     std::partition(expected.begin(), expected.end(),[pivot](const auto& em){ return em < pivot;});
 
-    p_partition::parallel_partition(v.begin(),
-                                    v.end(),
-                                    [pivot](const auto& em){ return em < pivot; },
-                                    12);
+    p_partition::partition(v.begin(),
+                           v.end(),
+                           [pivot](const auto &em) { return em < pivot; },
+                           12);
 
     for (int i=0; i<v.size(); i++){
         REQUIRE((v[i] < pivot) == (expected[i] < pivot));
@@ -139,5 +139,45 @@ TEST_CASE("test parallel_partition_phase_2", "[correctness]"){
         else{
             REQUIRE(v[i] >= pivot);
         }
+    }
+}
+
+TEST_CASE("test quicksort", "[correctness]"){
+    int numberOfValues = 500;
+    int numThreads = 4;
+
+    std::vector<float> v(numberOfValues);
+    std::generate(v.begin(), v.end(), []() {
+        return rand() % 100;
+    });
+
+    std::vector<float> vCopy(v);
+
+    //print array
+    std::cout << "all elements in Input: ";
+    auto temp = v.begin();
+    while(temp != v.end()){
+        std::cout << *temp << ' ';
+        temp = std::next(temp);
+    }
+    std::cout << std::endl;
+
+    auto comparator = [](const auto& em1, const auto& em2){ return em1 < em2; };
+
+    p_partition::quicksort(v.begin(),v.end(), comparator, numThreads);
+    // for comparison sort the copy with std::sort
+    std::sort(vCopy.begin(), vCopy.end(), comparator);
+
+    //print output
+    std::cout << "all elements in Output: ";
+    temp = v.begin();
+    while(temp != v.end()){
+        std::cout << *temp << ' ';
+        temp = std::next(temp);
+    }
+    std::cout << std::endl;
+
+    for (int i=0; i<numberOfValues; i++){
+        REQUIRE(v[i] == vCopy[i]);
     }
 }

@@ -13,10 +13,10 @@ int main(int argc, char *argv[])
 
     // test parallel partition (phase one)  (block size is currently 2)
     int leftNeutralized, rightNeutralized;
-    p_partition::parallel_partition(v.begin(),
-                                    v.end(),
-                                    [pivot](const auto& em){ return em < pivot; },
-                                    1);
+    p_partition::partition(v.begin(),
+                           v.end(),
+                           [pivot](const auto &em) { return em < pivot; },
+                           1);
     for (int i=0; i<v.size(); i++)
         std::cout << v[i] << " ";
     std::cout << std::endl;

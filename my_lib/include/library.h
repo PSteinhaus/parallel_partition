@@ -232,7 +232,7 @@ namespace p_partition  {
 #pragma clang diagnostic pop
 
     template <typename ForwardIt, typename UnaryPredicate>
-    void parallel_partition_phase_two(ForwardIt left, ForwardIt afterLast, UnaryPredicate p, int size, int blockSize, int ln, int rn, std::vector<int> remainingBlocks){
+    ForwardIt parallel_partition_phase_two(ForwardIt left, ForwardIt afterLast, UnaryPredicate p, int size, int blockSize, int ln, int rn, std::vector<int> &remainingBlocks){
 
         bool gotBlocks;
         int leftFromRemaining, rightFromRemaining;
@@ -346,19 +346,16 @@ namespace p_partition  {
         ForwardIt leftIt = std::next(left,ln-1);
         ForwardIt rightIt = std::next(left, size-rn);
 
-        std::partition(leftIt, rightIt, p);
-
-
-
+        return std::partition(leftIt, rightIt, p);
     }
 
     template <typename ForwardIt, typename UnaryPredicate>
-    void parallel_partition(ForwardIt left, ForwardIt afterLast, UnaryPredicate p, int numThreads){
+    ForwardIt partition(ForwardIt left, ForwardIt afterLast, UnaryPredicate p, int numThreads){
         //TODO maybe use long to make user there is no overflow on big arrays
         int size = std::distance(left, afterLast);
         int ln, rn;
 
-        // TODO find a way to calculate a good blookSize
+        // TODO find a way to calculate a good blockSize
         int blockSize = 3;
 
 
@@ -395,7 +392,7 @@ namespace p_partition  {
         }
         std::cout << std::endl;
 
-        parallel_partition_phase_two(left, afterLast, p, size, blockSize, ln, rn, remainingBlocks);
+        auto split = parallel_partition_phase_two(left, afterLast, p, size, blockSize, ln, rn, remainingBlocks);
 
         //print array
         std::cout << std::endl;
@@ -405,8 +402,47 @@ namespace p_partition  {
             std::cout << *temp << ' ';
             temp = std::next(temp);
         }
+
+        return split;
     }
 
+    template <typename ForwardIt, typename Compare>
+    inline
+    auto choose_pivot(ForwardIt begin, ForwardIt end, Compare c) {
+        auto first = *begin;
+        auto size = std::distance(begin, end);
+        ForwardIt midIter = std::next(begin, size/2);
+        auto middle = *midIter;
+        auto last = *std::next(midIter, size - size/2 - 1);
+
+        return (std::min({first, middle, last}, c) + std::max({first, middle, last}, c)) / 2;
+    }
+
+    template <typename ForwardIt, typename Compare>
+    void quicksort(ForwardIt left, ForwardIt afterLast, Compare c, int numThreads) {
+        if (numThreads == 1) {
+            // sort sequentially
+            std::sort(left, afterLast, c);
+            // TODO: start helping
+            return;
+        }
+
+        auto pivot = choose_pivot(left, afterLast, c);
+        auto predicate = [pivot, c](const auto& em){ return c(em, pivot); };
+        auto size = std::distance(left, afterLast);
+        int blockSize = 4;
+        int ln, rn;
+        auto remaining = parallel_partition_phase_one(left, afterLast, predicate, numThreads, size, blockSize, &ln, &rn);
+
+        ForwardIt split = parallel_partition_phase_two(left, afterLast, predicate, size, blockSize, ln, rn, remaining);
+
+        // let half of the current threads work on the first half and the rest on the other
+        int processorSplit = numThreads / 2;
+#pragma omp task
+        quicksort(left, split, c, processorSplit);
+
+        quicksort(split, afterLast, c, numThreads - processorSplit);
+    }
 
 
     // test func for nested parallelism
