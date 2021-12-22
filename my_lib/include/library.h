@@ -437,8 +437,11 @@ namespace p_partition  {
 
         ForwardIt split = parallel_partition_phase_two(left, afterLast, predicate, size, blockSize, ln, rn, remaining);
 
-        // let half of the current threads work on the first half and the rest on the other
-        int processorSplit = numThreads / 2;
+        // split the threads based on the size of the new partitions
+        auto s = std::distance(left, split);
+        int processorSplit = numThreads * s / size;
+        if (processorSplit == 0)
+            processorSplit = 1;
 #pragma omp task
         quicksort(left, split, c, processorSplit);
 
