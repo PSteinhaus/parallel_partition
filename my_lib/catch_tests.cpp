@@ -181,3 +181,48 @@ TEST_CASE("test quicksort", "[correctness]"){
         REQUIRE(v[i] == vCopy[i]);
     }
 }
+
+TEST_CASE("test nth_element", "[correctness]"){
+    int numberOfValues = 500;
+    int numThreads = 4;
+    int n = rand() % numberOfValues;
+
+    std::vector<float> v(numberOfValues);
+    std::generate(v.begin(), v.end(), []() {
+        return rand() % 100;
+    });
+
+    std::vector<float> vCopy(v);
+
+    //print array
+    std::cout << "all elements in Input: ";
+    auto temp = v.begin();
+    while(temp != v.end()){
+        std::cout << *temp << ' ';
+        temp = std::next(temp);
+    }
+    std::cout << std::endl;
+
+    auto comparator = [](const auto& em1, const auto& em2){ return em1 < em2; };
+
+    p_partition::nth_element(v.begin(), std::next(v.begin(), n), v.end(), comparator, numThreads);
+    // for comparison use std::nth_element on the copy
+    std::nth_element(vCopy.begin(), std::next(vCopy.begin(), n), vCopy.end(), comparator);
+
+    //print output
+    std::cout << "all elements in Output: ";
+    temp = v.begin();
+    while(temp != v.end()){
+        std::cout << *temp << ' ';
+        temp = std::next(temp);
+    }
+    std::cout << std::endl;
+
+    // check that all smaller indexes hold smaller values
+    for (int i=0; i<n; i++){
+        REQUIRE(v[i] <= v[n]);
+    }
+
+    // check that n_th is actually the n_th element of the sorted list
+    REQUIRE(v[n] == vCopy[n]);
+}

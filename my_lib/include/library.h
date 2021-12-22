@@ -432,6 +432,7 @@ namespace p_partition  {
         auto size = std::distance(left, afterLast);
         int blockSize = 4;
         int ln, rn;
+
         auto remaining = parallel_partition_phase_one(left, afterLast, predicate, numThreads, size, blockSize, &ln, &rn);
 
         ForwardIt split = parallel_partition_phase_two(left, afterLast, predicate, size, blockSize, ln, rn, remaining);
@@ -442,6 +443,39 @@ namespace p_partition  {
         quicksort(left, split, c, processorSplit);
 
         quicksort(split, afterLast, c, numThreads - processorSplit);
+    }
+
+    template <typename ForwardIt, typename Compare>
+    void nth_element(ForwardIt begin, ForwardIt n_th, ForwardIt end, Compare c, int numThreads) {
+        auto pivot = choose_pivot(begin, end, c);
+        auto predicate = [pivot, c](const auto& em){ return c(em, pivot); };
+        auto size = std::distance(begin, end);
+        int blockSize = 4;
+        int ln, rn;
+
+        const int BREAKOFF = 4;
+        if (size < BREAKOFF) {
+            // for small sizes just use std::nth_element
+            std::nth_element(begin, n_th, end, c);
+            return;
+        }
+
+        auto remaining = parallel_partition_phase_one(begin, end, predicate, numThreads, size, blockSize, &ln, &rn);
+
+        ForwardIt split = parallel_partition_phase_two(begin, end, predicate, size, blockSize, ln, rn, remaining);
+
+        // check whether you have to search left or right of the split
+        // TODO: find out whether there's a better way to calculate this without making any assumptions about the iterators,
+        //       or whether we should try to somehow check if the iterators are random access iterators so we can just do `n_th < split`
+        auto n = std::distance(begin, n_th);
+        auto s = std::distance(begin, split);
+        if (n < s) {
+            // search left
+            nth_element(begin, n_th, split, c, numThreads);
+        } else {
+            // search right
+            nth_element(split, n_th, end, c, numThreads);
+        }
     }
 
 
