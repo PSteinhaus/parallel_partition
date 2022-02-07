@@ -143,15 +143,15 @@ TEST_CASE("test parallel_partition_phase_2", "[correctness]"){
 }
 
 TEST_CASE("test quicksort", "[correctness]"){
-    int numberOfValues = 500;
+    int numberOfValues = 100000;
     int numThreads = 4;
 
-    std::vector<float> v(numberOfValues);
+    std::vector<int> v(numberOfValues);
     std::generate(v.begin(), v.end(), []() {
         return rand() % 100;
     });
 
-    std::vector<float> vCopy(v);
+    std::vector<int> vCopy(v);
 
     //print array
     std::cout << "all elements in Input: ";

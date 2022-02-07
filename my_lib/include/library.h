@@ -7,6 +7,7 @@
 #include <mutex>
 #include <cstdlib>
 #include <iostream>
+#include <algorithm>
 
 
 namespace p_partition  {
@@ -14,12 +15,14 @@ namespace p_partition  {
     const int LEFT = 1;
     const int RIGHT = 2;
     const int NONE = 3;
+    const int BLOCK_BYTES = 4096;
 
     //returns 0 if Both neutralized, 1 if left ist neutralized, 2 if right is neutralized
     template <typename ForwardIt, typename UnaryPredicate>
     int neutralize(ForwardIt left, ForwardIt right, int blocksize, UnaryPredicate p){
         int i=0 , j=0;
         do {
+            std::cout << "1" << std::endl;
             for (; i < blocksize; i++){
                 if (!p(*left))
                     break;
@@ -80,6 +83,7 @@ namespace p_partition  {
         std::vector<int>::iterator remBegin = (*remainingBlocks).begin(), remEnd = (*remainingBlocks).end();
         if(!(*remainingBlocks).empty()) {
             while (true) {
+                std::cout << "2" << std::endl;
                 if (*remBegin < ln) {
                     *left = *remBegin;
                     (*remainingBlocks).erase(remBegin);
@@ -98,6 +102,7 @@ namespace p_partition  {
         std::vector<int>::iterator remBegin = (*remainingBlocks).begin(), remEnd = (*remainingBlocks).end();
         if(!(*remainingBlocks).empty()) {
             while (true) {
+                std::cout << "3" << std::endl;
                 if (*remBegin >= rn) {
                     *right = *remBegin;
                     (*remainingBlocks).erase(remBegin);
@@ -111,9 +116,7 @@ namespace p_partition  {
     }
 
     int get_blocks_from_remaining(std::vector<int> *remainingBlocks, int ln, int rn, int *left, int *right){
-        bool foundBlock = false;
-
-        foundBlock = get_left_block_from_remaining(remainingBlocks, ln, left);
+        bool foundBlock = get_left_block_from_remaining(remainingBlocks, ln, left);
         if(foundBlock == false){return false;}
         foundBlock = get_right_block_from_remaining(remainingBlocks, rn, right);
         if(foundBlock == false){
@@ -138,10 +141,11 @@ namespace p_partition  {
 
 #pragma omp parallel reduction(+: ln, rn) num_threads(numThreads)
         {
+            /*
             if (omp_get_thread_num() == 1) {
                 std::cout << "number of threads: " << omp_get_num_threads() << std::endl;
             }
-
+            */
             ForwardIt leftBlock, rightBlock;
             bool gotLeftBlock, gotRightBlock;
             int leftCounter = 0, rightCounter = 0;
@@ -156,7 +160,7 @@ namespace p_partition  {
                     posLeftBlock = leftTaken;
                     leftBlock = get_left_block(left, &leftTaken, blockSize);
                     // DEBUG
-                    std::cout << "thread "<< t_num << " took left block: " << posLeftBlock << std::endl;
+                    //std::cout << "thread "<< t_num << " took left block: " << posLeftBlock << std::endl;
                 }
                 // get your first right block
                 gotRightBlock = block_available(leftTaken, rightTaken, size, blockSize);
@@ -164,11 +168,12 @@ namespace p_partition  {
                     posRightBlock = rightTaken;
                     rightBlock = get_right_block(left, &rightTaken, size, blockSize);
                     // DEBUG
-                    std::cout << "thread "<< t_num << " took right block: " <<  size - posRightBlock - blockSize << std::endl;
+                    //std::cout << "thread "<< t_num << " took right block: " <<  size - posRightBlock - blockSize << std::endl;
                 }
                 taken_mtx.unlock();
             }
             while (gotLeftBlock && gotRightBlock) {
+                std::cout << "4" << std::endl;
                 int side = neutralize(leftBlock, rightBlock, blockSize, p);
                 // try to get new blocks, depending on which side was completed in the neutralize call
                 switch (side) {
@@ -176,13 +181,13 @@ namespace p_partition  {
                         ++leftCounter;
                         taken_mtx.lock();
                         // DEBUG
-                        std::cout << "thread "<< t_num << " finished left block: " << posLeftBlock << std::endl;
+                        //std::cout << "thread "<< t_num << " finished left block: " << posLeftBlock << std::endl;
                         gotLeftBlock = block_available(leftTaken, rightTaken, size, blockSize);
                         if (gotLeftBlock) {
                             posLeftBlock = leftTaken;
                             leftBlock = get_left_block(left, &leftTaken, blockSize);
                             // DEBUG
-                            std::cout << "thread "<< t_num << " took left block: " << posLeftBlock << std::endl;
+                            //std::cout << "thread "<< t_num << " took left block: " << posLeftBlock << std::endl;
                         }
                         taken_mtx.unlock();
                         // don't break, just continue with the RIGHT case to get a right block as well
@@ -190,13 +195,13 @@ namespace p_partition  {
                         ++rightCounter;
                         taken_mtx.lock();
                         // DEBUG
-                        std::cout << "thread "<< t_num << " finished right block: " << size - posRightBlock - blockSize << std::endl;
+                        //std::cout << "thread "<< t_num << " finished right block: " << size - posRightBlock - blockSize << std::endl;
                         gotRightBlock = block_available(leftTaken, rightTaken, size, blockSize);
                         if (gotRightBlock) {
                             posRightBlock = rightTaken;
                             rightBlock = get_right_block(left, &rightTaken, size, blockSize);
                             // DEBUG
-                            std::cout << "thread "<< t_num << " took right block: " <<  size - posRightBlock - blockSize << std::endl;
+                            //std::cout << "thread "<< t_num << " took right block: " <<  size - posRightBlock - blockSize << std::endl;
                         }
                         taken_mtx.unlock();
                         break;
@@ -204,13 +209,13 @@ namespace p_partition  {
                         ++leftCounter;
                         taken_mtx.lock();
                         // DEBUG
-                        std::cout << "thread "<< t_num << " finished left block: " << posLeftBlock << std::endl;
+                        //std::cout << "thread "<< t_num << " finished left block: " << posLeftBlock << std::endl;
                         gotLeftBlock = block_available(leftTaken, rightTaken, size, blockSize);
                         if (gotLeftBlock) {
                             posLeftBlock = leftTaken;
                             leftBlock = get_left_block(left, &leftTaken, blockSize);
                             // DEBUG
-                            std::cout << "thread "<< t_num << " took left block: " << posLeftBlock << std::endl;
+                            //std::cout << "thread "<< t_num << " took left block: " << posLeftBlock << std::endl;
                         }
                         taken_mtx.unlock();
                         break;
@@ -243,12 +248,13 @@ namespace p_partition  {
         gotBlocks = get_blocks_from_remaining(&remainingBlocks, ln, size-rn, &leftFromRemaining,
                                               &rightFromRemaining);
         while(gotBlocks == true) {
+            std::cout << "5" << std::endl;
             blockPos = leftFromRemaining;
-            std::cout << "leftBlockPos: " << blockPos << std::endl;
+            //std::cout << "leftBlockPos: " << blockPos << std::endl;
             leftBlock = get_left_block(left, &blockPos, blockSize);
 
             blockPos = rightFromRemaining;
-            std::cout << "rightBlockPos: " << blockPos << std::endl;
+            //std::cout << "rightBlockPos: " << blockPos << std::endl;
             rightBlock = get_left_block(left, &blockPos, blockSize);
 
             int side = neutralize(leftBlock, rightBlock, blockSize, p);
@@ -271,31 +277,32 @@ namespace p_partition  {
         }
 
         int usedBlocksLeft = ln, usedBlocksRight = size-rn-blockSize;
-        std::cout << "ln: " << ln << " rn: " << rn << std::endl;
+        //std::cout << "ln: " << ln << " rn: " << rn << std::endl;
 
         //try to get left block for swap
         gotBlocks = get_left_block_from_remaining(&remainingBlocks, ln, &leftFromRemaining);
         while(gotBlocks == true){
-
+            std::cout << "6" << std::endl;
 
             //get left Block
             blockPos = leftFromRemaining;
-            std::cout << "leftBlockPos: " << blockPos << std::endl;
+            //std::cout << "leftBlockPos: " << blockPos << std::endl;
             leftBlock = get_left_block(left, &blockPos, blockSize);
 
             //get right Block
             int pos = usedBlocksLeft;
             int shift = 0;
             while(std::find(remainingBlocks.begin(), remainingBlocks.end(), pos+shift) != remainingBlocks.end()){
+                std::cout << "7" << std::endl;
                 shift += blockSize;
             }
             pos = pos + shift;
-            std::cout << "left swap with pos: " << pos << std::endl;
+            //std::cout << "left swap with pos: " << pos << std::endl;
             rightBlock = get_left_block(left, &pos, blockSize);
 
             //swap
             for(int i = 0; i< blockSize; i++){
-                std::cout << "leftBlock: " << *leftBlock << " rightBlock: " << *rightBlock << std::endl;
+                //std::cout << "leftBlock: " << *leftBlock << " rightBlock: " << *rightBlock << std::endl;
                 std::swap(*leftBlock, *rightBlock);
                 leftBlock = std::next(leftBlock);
                 rightBlock = std::next(rightBlock);
@@ -307,24 +314,27 @@ namespace p_partition  {
         //try to get right block for swap
         gotBlocks = get_right_block_from_remaining(&remainingBlocks, size-rn, &rightFromRemaining);
         while(gotBlocks == true) {
+            std::cout << "8" << std::endl;
             //get right Block
             blockPos = rightFromRemaining;
-            std::cout << "rightBlockPos: " << blockPos << std::endl;
+            //std::cout << "rightBlockPos: " << blockPos << std::endl;
             rightBlock = get_left_block(left, &blockPos, blockSize);
 
             //get left Block
             int pos = usedBlocksRight;
             int shift = 0;
             while(std::find(remainingBlocks.begin(), remainingBlocks.end(), pos-shift) != remainingBlocks.end()){
+                // TODO: something is wrong here; for some reason we get an infinite loop here;
+                std::cout << "9" << std::endl;
                 shift = blockSize;
             }
             pos = pos-shift;
-            std::cout << "right swap with pos: " << pos << std::endl;
+            //std::cout << "right swap with pos: " << pos << std::endl;
             leftBlock = get_left_block(left, &pos, blockSize);
 
             //swap
             for(int i = 0; i< blockSize; i++){
-                std::cout << "leftBlock: " << *leftBlock << " rightBlock: " << *rightBlock << std::endl;
+                //std::cout << "leftBlock: " << *leftBlock << " rightBlock: " << *rightBlock << std::endl;
                 std::swap(*leftBlock, *rightBlock);
                 leftBlock = std::next(leftBlock);
                 rightBlock = std::next(rightBlock);
@@ -333,17 +343,15 @@ namespace p_partition  {
             gotBlocks = get_right_block_from_remaining(&remainingBlocks, size-rn, &rightFromRemaining);
         }
 
-
+        /*
         std::cout << "all remaining Blocks: ";
         for (auto i: remainingBlocks)
             std::cout << i << ' ';
         std::cout<< std::endl;
-
-
-
+        */
 
         //sort remaining values
-        ForwardIt leftIt = std::next(left,ln-1);
+        ForwardIt leftIt = std::next(left,ln);
         ForwardIt rightIt = std::next(left, size-rn);
 
         return std::partition(leftIt, rightIt, p);
@@ -356,8 +364,7 @@ namespace p_partition  {
         int ln, rn;
 
         // TODO find a way to calculate a good blockSize
-        int blockSize = 3;
-
+        int blockSize = BLOCK_BYTES / sizeof(typename ForwardIt::value_type);
 
         //TODO maybe use list ?
         //TODO maybe only give pointers to functions
@@ -430,7 +437,7 @@ namespace p_partition  {
         auto pivot = choose_pivot(left, afterLast, c);
         auto predicate = [pivot, c](const auto& em){ return c(em, pivot); };
         auto size = std::distance(left, afterLast);
-        int blockSize = 4;
+        int blockSize = BLOCK_BYTES / sizeof(typename ForwardIt::value_type);
         int ln, rn;
 
         auto remaining = parallel_partition_phase_one(left, afterLast, predicate, numThreads, size, blockSize, &ln, &rn);
@@ -453,7 +460,7 @@ namespace p_partition  {
         auto pivot = choose_pivot(begin, end, c);
         auto predicate = [pivot, c](const auto& em){ return c(em, pivot); };
         auto size = std::distance(begin, end);
-        int blockSize = 4;
+        int blockSize = BLOCK_BYTES / sizeof(typename ForwardIt::value_type);
         int ln, rn;
 
         const int BREAKOFF = 4;
