@@ -22,7 +22,7 @@ namespace p_partition  {
     int neutralize(ForwardIt left, ForwardIt right, int blocksize, UnaryPredicate p){
         int i=0 , j=0;
         do {
-            std::cout << "1" << std::endl;
+            //std::cout << "1" << std::endl;
             for (; i < blocksize; i++){
                 if (!p(*left))
                     break;
@@ -81,36 +81,28 @@ namespace p_partition  {
 
     bool get_left_block_from_remaining(std::vector<int> *remainingBlocks, int ln, int *left){
         std::vector<int>::iterator remBegin = (*remainingBlocks).begin(), remEnd = (*remainingBlocks).end();
-        if(!(*remainingBlocks).empty()) {
-            while (true) {
-                std::cout << "2" << std::endl;
-                if (*remBegin < ln) {
-                    *left = *remBegin;
-                    (*remainingBlocks).erase(remBegin);
-                    return true;
-                }
-                //check if List ended
-                if (std::distance(remBegin, remEnd) > 1) {
-                    remBegin = std::next(remBegin);
-                } else { return false; }
+        while (remBegin != remEnd) {
+            std::cout << "2" << std::endl;
+            if (*remBegin < ln) {
+                *left = *remBegin;
+                (*remainingBlocks).erase(remBegin);
+                return true;
             }
+            remBegin = std::next(remBegin);
         }
         return false;
     }
 
     bool get_right_block_from_remaining(std::vector<int> *remainingBlocks, int rn, int *right){
         std::vector<int>::iterator remBegin = (*remainingBlocks).begin(), remEnd = (*remainingBlocks).end();
-        if(!(*remainingBlocks).empty()) {
-            while (true) {
-                std::cout << "3" << std::endl;
-                if (*remBegin >= rn) {
-                    *right = *remBegin;
-                    (*remainingBlocks).erase(remBegin);
-                    return true;
-                } else if (std::distance(remBegin, remEnd) > 1) {
-                    remBegin = std::next(remBegin);
-                } else { return false; }
+        while (remBegin != remEnd) {
+            //std::cout << "3" << std::endl;
+            if (*remBegin >= rn) {
+                *right = *remBegin;
+                (*remainingBlocks).erase(remBegin);
+                return true;
             }
+            remBegin = std::next(remBegin);
         }
         return false;
     }
@@ -131,7 +123,7 @@ namespace p_partition  {
 #pragma ide diagnostic ignored "openmp-use-default-none"
     // returns the remaining blocks
     template <typename ForwardIt, typename UnaryPredicate>
-    std::vector<int> parallel_partition_phase_one(ForwardIt left, ForwardIt afterLast, UnaryPredicate p, int numThreads, int size, int blockSize, int* leftNeutralized, int *rightNeutralized) {
+    std::vector<int> parallel_partition_phase_one(ForwardIt left, UnaryPredicate p, int numThreads, int size, int blockSize, int* leftNeutralized, int *rightNeutralized) {
         int leftTaken = 0, rightTaken = 0;  // Share two variables to count how many blocks have already been taken in by working threads from each side.
         // This works as long as we take care that only one thread ever uses them at once.
         int ln = 0, rn = 0;
@@ -363,7 +355,6 @@ namespace p_partition  {
         int size = std::distance(left, afterLast);
         int ln, rn;
 
-        // TODO find a way to calculate a good blockSize
         int blockSize = BLOCK_BYTES / sizeof(typename ForwardIt::value_type);
 
         //TODO maybe use list ?
@@ -380,7 +371,7 @@ namespace p_partition  {
         std::cout << std::endl;
 
 
-        remainingBlocks = parallel_partition_phase_one(left, afterLast, p, numThreads, size, blockSize, &ln, &rn);
+        remainingBlocks = parallel_partition_phase_one(left, p, numThreads, size, blockSize, &ln, &rn);
 
         //print some info
         std::cout << std::endl;
@@ -440,7 +431,7 @@ namespace p_partition  {
         int blockSize = BLOCK_BYTES / sizeof(typename ForwardIt::value_type);
         int ln, rn;
 
-        auto remaining = parallel_partition_phase_one(left, afterLast, predicate, numThreads, size, blockSize, &ln, &rn);
+        auto remaining = parallel_partition_phase_one(left, predicate, numThreads, size, blockSize, &ln, &rn);
 
         ForwardIt split = parallel_partition_phase_two(left, afterLast, predicate, size, blockSize, ln, rn, remaining);
 
@@ -470,7 +461,7 @@ namespace p_partition  {
             return;
         }
 
-        auto remaining = parallel_partition_phase_one(begin, end, predicate, numThreads, size, blockSize, &ln, &rn);
+        auto remaining = parallel_partition_phase_one(begin, predicate, numThreads, size, blockSize, &ln, &rn);
 
         ForwardIt split = parallel_partition_phase_two(begin, end, predicate, size, blockSize, ln, rn, remaining);
 
@@ -504,7 +495,6 @@ namespace p_partition  {
             }
         }
     }
-
 
 }
 

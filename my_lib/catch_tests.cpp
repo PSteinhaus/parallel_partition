@@ -62,7 +62,7 @@ TEST_CASE("test parallel_partition_phase_1", "[correctness]"){
     }
     std::cout << std::endl;
 
-    remainingBlocks = p_partition::parallel_partition_phase_one(v.begin(),v.end(), [pivot](const auto& em){ return em < pivot; },
+    remainingBlocks = p_partition::parallel_partition_phase_one(v.begin(), [pivot](const auto& em){ return em < pivot; },
                                               numThreads, numberOfValues, blockSize, &ln,&rn);
 
     //print some info
