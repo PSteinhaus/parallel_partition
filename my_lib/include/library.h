@@ -14,8 +14,7 @@ namespace p_partition  {
     const int BOTH = 0;
     const int LEFT = 1;
     const int RIGHT = 2;
-    const int NONE = 3;
-    const int BLOCK_BYTES = 4096;
+    const int BLOCK_BYTES = 4096;   // empirically found optimum
 
     //returns 0 if Both neutralized, 1 if left ist neutralized, 2 if right is neutralized
     template <typename ForwardIt, typename UnaryPredicate>
@@ -82,7 +81,7 @@ namespace p_partition  {
     bool get_left_block_from_remaining(std::vector<int> *remainingBlocks, int ln, int *left){
         std::vector<int>::iterator remBegin = (*remainingBlocks).begin(), remEnd = (*remainingBlocks).end();
         while (remBegin != remEnd) {
-            std::cout << "2" << std::endl;
+            //std::cout << "2" << std::endl;
             if (*remBegin < ln) {
                 *left = *remBegin;
                 (*remainingBlocks).erase(remBegin);
@@ -165,7 +164,7 @@ namespace p_partition  {
                 taken_mtx.unlock();
             }
             while (gotLeftBlock && gotRightBlock) {
-                std::cout << "4" << std::endl;
+                //std::cout << "4" << std::endl;
                 int side = neutralize(leftBlock, rightBlock, blockSize, p);
                 // try to get new blocks, depending on which side was completed in the neutralize call
                 switch (side) {
@@ -234,20 +233,17 @@ namespace p_partition  {
         bool gotBlocks;
         int leftFromRemaining, rightFromRemaining;
         ForwardIt leftBlock, rightBlock;
-        int blockPos;
 
-        //try to get left and right block and neutralize both
+        // try to get left and right blocks and neutralize both
         gotBlocks = get_blocks_from_remaining(&remainingBlocks, ln, size-rn, &leftFromRemaining,
                                               &rightFromRemaining);
-        while(gotBlocks == true) {
-            std::cout << "5" << std::endl;
-            blockPos = leftFromRemaining;
+        while(gotBlocks) {
+            //std::cout << "5" << std::endl;
             //std::cout << "leftBlockPos: " << blockPos << std::endl;
-            leftBlock = get_left_block(left, &blockPos, blockSize);
+            leftBlock = std::next(left, leftFromRemaining);
 
-            blockPos = rightFromRemaining;
             //std::cout << "rightBlockPos: " << blockPos << std::endl;
-            rightBlock = get_left_block(left, &blockPos, blockSize);
+            rightBlock = std::next(left, rightFromRemaining);
 
             int side = neutralize(leftBlock, rightBlock, blockSize, p);
             switch (side) {
@@ -268,29 +264,31 @@ namespace p_partition  {
                                                   &rightFromRemaining);
         }
 
-        int usedBlocksLeft = ln, usedBlocksRight = size-rn-blockSize;
+        // now, neutralized but not well-placed blocks have to be swapped, if there are any
+
+        int rightOfLN = ln, leftOfRN = size-rn-blockSize;
         //std::cout << "ln: " << ln << " rn: " << rn << std::endl;
 
         //try to get left block for swap
         gotBlocks = get_left_block_from_remaining(&remainingBlocks, ln, &leftFromRemaining);
-        while(gotBlocks == true){
-            std::cout << "6" << std::endl;
+        while(gotBlocks){
+            //std::cout << "6" << std::endl;
 
-            //get left Block
-            blockPos = leftFromRemaining;
+            //get left block iterator
             //std::cout << "leftBlockPos: " << blockPos << std::endl;
-            leftBlock = get_left_block(left, &blockPos, blockSize);
+            leftBlock = std::next(left, leftFromRemaining);
 
-            //get right Block
-            int pos = usedBlocksLeft;
-            int shift = 0;
+            //get neutralized block between LN and RN to swap with
+            int pos = rightOfLN;
+            // skip over all blocks that are still non-neutralized
+            int shift = 0;  // store the number of non-neutralized elements right of LN in this shift, to use it later
             while(std::find(remainingBlocks.begin(), remainingBlocks.end(), pos+shift) != remainingBlocks.end()){
-                std::cout << "7" << std::endl;
+                //std::cout << "7" << std::endl;
                 shift += blockSize;
             }
             pos = pos + shift;
             //std::cout << "left swap with pos: " << pos << std::endl;
-            rightBlock = get_left_block(left, &pos, blockSize);
+            rightBlock = std::next(left, pos);
 
             //swap
             for(int i = 0; i< blockSize; i++){
@@ -299,30 +297,31 @@ namespace p_partition  {
                 leftBlock = std::next(leftBlock);
                 rightBlock = std::next(rightBlock);
             }
-            usedBlocksLeft += shift+blockSize;
+            // remember that you've already looked through everything in the shift
+            // and the neutralized block found has been swapped, so it can be skipped in the next search too
+            rightOfLN += shift+blockSize;
             gotBlocks = get_left_block_from_remaining(&remainingBlocks, ln, &leftFromRemaining);
         }
 
         //try to get right block for swap
         gotBlocks = get_right_block_from_remaining(&remainingBlocks, size-rn, &rightFromRemaining);
-        while(gotBlocks == true) {
-            std::cout << "8" << std::endl;
-            //get right Block
-            blockPos = rightFromRemaining;
+        while(gotBlocks) {
+            //std::cout << "8" << std::endl;
+            //get right block iterator
             //std::cout << "rightBlockPos: " << blockPos << std::endl;
-            rightBlock = get_left_block(left, &blockPos, blockSize);
+            rightBlock = std::next(left, rightFromRemaining);
 
-            //get left Block
-            int pos = usedBlocksRight;
+            //get neutralized block between LN and RN to swap with
+            int pos = leftOfRN;
+            // skip over all blocks that are still non-neutralized
             int shift = 0;
             while(std::find(remainingBlocks.begin(), remainingBlocks.end(), pos-shift) != remainingBlocks.end()){
-                // TODO: something is wrong here; for some reason we get an infinite loop here;
-                std::cout << "9" << std::endl;
-                shift = blockSize;
+                //std::cout << "9" << std::endl;
+                shift += blockSize;
             }
             pos = pos-shift;
             //std::cout << "right swap with pos: " << pos << std::endl;
-            leftBlock = get_left_block(left, &pos, blockSize);
+            leftBlock = std::next(left, pos);
 
             //swap
             for(int i = 0; i< blockSize; i++){
@@ -331,7 +330,9 @@ namespace p_partition  {
                 leftBlock = std::next(leftBlock);
                 rightBlock = std::next(rightBlock);
             }
-            usedBlocksRight -= shift+blockSize;
+            // remember that you've already looked through everything in the shift
+            // and the neutralized block found has been swapped, so it can be skipped in the next search too
+            leftOfRN -= shift+blockSize;
             gotBlocks = get_right_block_from_remaining(&remainingBlocks, size-rn, &rightFromRemaining);
         }
 

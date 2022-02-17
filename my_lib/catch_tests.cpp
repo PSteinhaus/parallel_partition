@@ -146,6 +146,8 @@ TEST_CASE("test quicksort", "[correctness]"){
     int numberOfValues = 100000;
     int numThreads = 4;
 
+    srand (time(nullptr)); // randomly seed rand
+
     std::vector<int> v(numberOfValues);
     std::generate(v.begin(), v.end(), []() {
         return rand() % 100;
