@@ -14,7 +14,7 @@ namespace p_partition  {
     const int BOTH = 0;
     const int LEFT = 1;
     const int RIGHT = 2;
-    const int BLOCK_BYTES = 4096;   // empirically found optimum
+    const int BLOCK_BYTES = 8000;   // empirically found optimum
 
     //returns 0 if Both neutralized, 1 if left ist neutralized, 2 if right is neutralized
     template <typename ForwardIt, typename UnaryPredicate>
@@ -424,10 +424,10 @@ namespace p_partition  {
     }
 
     template <typename ForwardIt, typename Compare>
-    void helpingSort(ForwardIt left, ForwardIt afterLast, Compare c, int blockSize, std::stack<std::pair<ForwardIt, ForwardIt>> *sortStack, std::mutex *stackMutex, std::atomic<bool> completedThreads[]) {
+    void helpingSort(ForwardIt left, ForwardIt afterLast, Compare c, int blockSize, std::stack<std::pair<ForwardIt, ForwardIt>> *sortStack, std::mutex *stackMutex, std::atomic<bool> completedThreads[], int totalThreads) {
         start:
         auto size = std::distance(left, afterLast);
-        if (size <= blockSize / 2) {    // empirically found factor
+        if (size <= blockSize / 6) {    // empirically found factor
             // stop recursion and simply sort sequentially
             seq:
             std::sort(left, afterLast, c);
@@ -436,8 +436,8 @@ namespace p_partition  {
             auto pivot = choose_pivot(left, afterLast, c);
             auto predicate = [pivot, c](const auto& em){ return c(em, pivot); };
             auto split = std::partition(left, afterLast, predicate);
-            bool leftSmall = std::distance(left, split) <= blockSize / 2;
-            bool rightSmall = std::distance(split, afterLast) <= blockSize / 2;
+            bool leftSmall = std::distance(left, split) <= blockSize / 6;
+            bool rightSmall = std::distance(split, afterLast) <= blockSize / 6;
 
             // if the following condition holds true, then the problem won't be fixed through recursion
             // and the remaining values have to be sorted sequentially (though they probably really are already)
@@ -533,7 +533,6 @@ namespace p_partition  {
             }
             // check for total completion
             bool completed = true;
-            int totalThreads = omp_get_num_threads();
             for (int i = 0; i < totalThreads; ++i) {
                 if (!completedThreads[i].load()) {
                     completed = false;
@@ -545,12 +544,12 @@ namespace p_partition  {
     }
 
     template <typename ForwardIt, typename Compare>
-    void _quicksort(ForwardIt left, ForwardIt afterLast, Compare c, int numThreads, int blockSize, std::stack<std::pair<ForwardIt, ForwardIt>> *sortStack, std::mutex *stackMutex, std::atomic<bool> completedThreads[]) {
+    void _quicksort(ForwardIt left, ForwardIt afterLast, Compare c, int numThreads, int blockSize, std::stack<std::pair<ForwardIt, ForwardIt>> *sortStack, std::mutex *stackMutex, std::atomic<bool> completedThreads[], int totalThreads) {
         if (numThreads == 1) {
             // classic: just sort sequentially
             //std::sort(left, afterLast, c);
             // advanced: sort sequentially with helping scheme
-            helpingSort(left, afterLast, c, blockSize, sortStack, stackMutex, completedThreads);
+            helpingSort(left, afterLast, c, blockSize, sortStack, stackMutex, completedThreads, totalThreads);
             return;
         }
 
@@ -569,9 +568,9 @@ namespace p_partition  {
         if (processorSplit == 0)
             processorSplit = 1;
 #pragma omp task
-        _quicksort(left, split, c, processorSplit, blockSize, sortStack, stackMutex, completedThreads);
+        _quicksort(left, split, c, processorSplit, blockSize, sortStack, stackMutex, completedThreads, totalThreads);
 
-        _quicksort(split, afterLast, c, numThreads - processorSplit, blockSize, sortStack, stackMutex, completedThreads);
+        _quicksort(split, afterLast, c, numThreads - processorSplit, blockSize, sortStack, stackMutex, completedThreads, totalThreads);
     }
 
     template <typename ForwardIt, typename Compare>
@@ -582,7 +581,7 @@ namespace p_partition  {
         std::mutex stackMutex;
         std::atomic<bool> completedThreads[numThreads];
 
-        _quicksort(left, afterLast, c, numThreads, blockSize, &sortStack, &stackMutex, completedThreads);
+        _quicksort(left, afterLast, c, numThreads, blockSize, &sortStack, &stackMutex, completedThreads, numThreads);
     }
 
     template <typename ForwardIt, typename Compare>
