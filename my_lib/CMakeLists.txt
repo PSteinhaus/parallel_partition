@@ -6,7 +6,7 @@ find_package(OpenMP REQUIRED)
 
 # these compiler flags are not valid for all compilers (not portable!)
 # TODO: make this more portable
-set(CMAKE_CXX_FLAGS "-Ofast -std=c++11 -fopenmp -march=native")
+set(CMAKE_CXX_FLAGS "-Ofast -std=c++14 -fopenmp -march=native")
 
 #compile library
 add_library(parallel_partition STATIC include/library.h src/library.cpp)

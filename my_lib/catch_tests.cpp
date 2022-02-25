@@ -40,8 +40,8 @@ TEST_CASE("test partition", "[correctness]"){
 
 TEST_CASE("test parallel_partition_phase_1", "[correctness]"){
     int numberOfValues = 50;
-    int numThreads = 12;
-    int blockSize = 6;
+    int numThreads = 4;
+    int blockSize = 3;
     float pivot = 50;
     int ln, rn;
 
@@ -115,7 +115,7 @@ TEST_CASE("test parallel_partition_phase_2", "[correctness]"){
     int numberOfValues = 50;
     int blockSize = 3;
     float pivot = 50;
-    int ln = 24, rn = 18;
+    int ln = 21, rn = 18;
 
     std::vector<float> v = {41, 11, 34, 0, 41, 24, 21, 16, 18, 11, 5, 45, 35, 27, 3, 12, 38, 42, 27, 36,
                             47, 4, 2, 95, 92, 82, 78, 58, 62, 95, 91, 26, 71, 53, 69, 91, 67, 99, 81, 94,
@@ -125,7 +125,7 @@ TEST_CASE("test parallel_partition_phase_2", "[correctness]"){
     p_partition::parallel_partition_phase_two(v.begin(), v.end(), [pivot](const auto& em){ return em < pivot;},
                                  numberOfValues, blockSize, ln, rn, remainingBlocks);
 
-    std::vector<float> expected = v;
+    std::vector<float> expected(v);
     std::partition(expected.begin(), expected.end(),[pivot](const auto& em){ return em < pivot;});
 
     for (auto i: v)
@@ -154,7 +154,7 @@ TEST_CASE("test quicksort", "[correctness]"){
     });
 
     std::vector<int> vCopy(v);
-
+/*
     //print array
     std::cout << "all elements in Input: ";
     auto temp = v.begin();
@@ -163,13 +163,13 @@ TEST_CASE("test quicksort", "[correctness]"){
         temp = std::next(temp);
     }
     std::cout << std::endl;
-
+*/
     auto comparator = [](const auto& em1, const auto& em2){ return em1 < em2; };
 
-    p_partition::quicksort(v.begin(),v.end(), comparator, numThreads);
+    p_partition::quicksort(v.begin(),v.end(), comparator);
     // for comparison sort the copy with std::sort
     std::sort(vCopy.begin(), vCopy.end(), comparator);
-
+/*
     //print output
     std::cout << "all elements in Output: ";
     temp = v.begin();
@@ -178,7 +178,7 @@ TEST_CASE("test quicksort", "[correctness]"){
         temp = std::next(temp);
     }
     std::cout << std::endl;
-
+*/
     for (int i=0; i<numberOfValues; i++){
         REQUIRE(v[i] == vCopy[i]);
     }

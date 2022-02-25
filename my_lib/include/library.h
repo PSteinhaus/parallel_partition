@@ -8,7 +8,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <algorithm>
-
+#include <stack>
 
 namespace p_partition  {
     const int BOTH = 0;
@@ -118,8 +118,6 @@ namespace p_partition  {
     }
 
 
-#pragma clang diagnostic push
-#pragma ide diagnostic ignored "openmp-use-default-none"
     // returns the remaining blocks
     template <typename ForwardIt, typename UnaryPredicate>
     std::vector<int> parallel_partition_phase_one(ForwardIt left, UnaryPredicate p, int numThreads, int size, int blockSize, int* leftNeutralized, int *rightNeutralized) {
@@ -225,7 +223,6 @@ namespace p_partition  {
 
         return remainingBlocks;
     }
-#pragma clang diagnostic pop
 
     template <typename ForwardIt, typename UnaryPredicate>
     ForwardIt parallel_partition_phase_two(ForwardIt left, ForwardIt afterLast, UnaryPredicate p, int size, int blockSize, int ln, int rn, std::vector<int> &remainingBlocks){
@@ -414,23 +411,153 @@ namespace p_partition  {
         auto middle = *midIter;
         auto last = *std::next(midIter, size - size/2 - 1);
 
-        return (std::min({first, middle, last}, c) + std::max({first, middle, last}, c)) / 2;
+        // DEBUG: these outputs illustrate how quickly a state of near sorted-ness is reached
+        //std::cout << "FIRST : " << first << std::endl;
+        //std::cout << "MIDDLE: " << middle << std::endl;
+        //std::cout << "LAST  : " << last << std::endl;
+
+        auto pivot = (std::min({first, middle, last}, c) + std::max({first, middle, last}, c)) / 2;
+
+        //std::cout << "PIVOT  : " << pivot << std::endl;
+
+        return pivot;
     }
 
     template <typename ForwardIt, typename Compare>
-    void quicksort(ForwardIt left, ForwardIt afterLast, Compare c, int numThreads) {
-        if (numThreads == 1) {
-            // sort sequentially
+    void helpingSort(ForwardIt left, ForwardIt afterLast, Compare c, int blockSize, std::stack<std::pair<ForwardIt, ForwardIt>> *sortStack, std::mutex *stackMutex, std::atomic<bool> completedThreads[]) {
+        start:
+        auto size = std::distance(left, afterLast);
+        if (size <= blockSize / 2) {    // empirically found factor
+            // stop recursion and simply sort sequentially
+            seq:
             std::sort(left, afterLast, c);
-            // TODO: start helping
+        } else {
+            // recursively part the interval in two
+            auto pivot = choose_pivot(left, afterLast, c);
+            auto predicate = [pivot, c](const auto& em){ return c(em, pivot); };
+            auto split = std::partition(left, afterLast, predicate);
+            bool leftSmall = std::distance(left, split) <= blockSize / 2;
+            bool rightSmall = std::distance(split, afterLast) <= blockSize / 2;
+
+            // if the following condition holds true, then the problem won't be fixed through recursion
+            // and the remaining values have to be sorted sequentially (though they probably really are already)
+            if (split == left || split == afterLast)    // TODO: this happens way too often...
+                goto seq;
+
+            if (leftSmall) {
+                std::sort(left, split, c);
+            } else {
+                // left isn't small so push it to the work stack
+                stackMutex->lock();
+                sortStack->push(std::pair<ForwardIt, ForwardIt>(left, split));
+                stackMutex->unlock();
+            }
+            if (rightSmall) {
+                std::sort(split, afterLast, c);
+            } else {
+                // right isn't small so push it to the work stack
+                stackMutex->lock();
+                sortStack->push(std::pair<ForwardIt, ForwardIt>(split, afterLast));
+                stackMutex->unlock();
+            }
+
+            /*  // AN OLDER ATTEMPT
+            // push the first half onto the stack and recursively sort the latter
+            // but only if you can; if the lock is taken start sorting first
+            if (stackMutex->try_lock()) {
+                sortStack->push(std::pair<ForwardIt, ForwardIt>(left, split));
+                stackMutex->unlock();
+                helpingSort(split, afterLast, c, blockSize, sortStack, stackMutex, completedThreads);
+            } else {
+                // lock is taken, sort first, then push
+                helpingSort(split, afterLast, c, blockSize, sortStack, stackMutex, completedThreads);
+                stackMutex->lock();
+                sortStack->push(std::pair<ForwardIt, ForwardIt>(left, split));
+                stackMutex->unlock();
+            }
+            */
+
+            /*  // A SLIGHTLY YOUNGER ATTEMPT TO IMPROVE/FIX THE OLDER ATTEMPT
+            if (!leftSmall) {
+                if (stackMutex->try_lock()) {
+                    sortStack->push(std::pair<ForwardIt, ForwardIt>(left, split));
+                    stackMutex->unlock();
+                    if (!rightSmall) {
+                        helpingSort(split, afterLast, c, blockSize, sortStack, stackMutex, completedThreads);
+                    } else {
+                        // right is small, so sort sequentially
+                        std::sort(split, afterLast, c);
+                    }
+                } else {
+                    // lock is taken, sort first, then push
+                    if (!rightSmall) {
+                        helpingSort(split, afterLast, c, blockSize, sortStack, stackMutex, completedThreads);
+                    } else {
+                        // right is small, so sort sequentially
+                        std::sort(split, afterLast, c);
+                    }
+                    stackMutex->lock();
+                    sortStack->push(std::pair<ForwardIt, ForwardIt>(left, split));
+                    stackMutex->unlock();
+                }
+            } else {
+                // left is small, so sort sequentially
+                std::sort(left, split, c);
+                if (!rightSmall) {
+                    helpingSort(split, afterLast, c, blockSize, sortStack, stackMutex, completedThreads);
+                } else {
+                    // right is small, so sort sequentially
+                    std::sort(split, afterLast, c);
+                }
+            }
+            */
+        }
+        // start helping by popping sorting jobs
+        while(true) {
+            // try to get a job
+            if (stackMutex->try_lock()) {
+                if (!sortStack->empty()) {
+                    std::pair<ForwardIt, ForwardIt> sortJob = sortStack->top();
+                    sortStack->pop();
+                    stackMutex->unlock();
+                    left = sortJob.first;
+                    afterLast = sortJob.second;
+                    goto start;
+                    // DEBUG: recursion depth might become a problem here (for some reason...)
+                    //helpingSort(sortJob.first, sortJob.second, c, blockSize, sortStack, stackMutex, completedThreads);
+                } else {
+                    stackMutex->unlock();
+                    // the job stack is empty, so you might be done
+                    completedThreads[omp_get_thread_num()].store(true);
+                }
+            }
+            // check for total completion
+            bool completed = true;
+            int totalThreads = omp_get_num_threads();
+            for (int i = 0; i < totalThreads; ++i) {
+                if (!completedThreads[i].load()) {
+                    completed = false;
+                    break;
+                }
+            }
+            if (completed) return;
+        }
+    }
+
+    template <typename ForwardIt, typename Compare>
+    void _quicksort(ForwardIt left, ForwardIt afterLast, Compare c, int numThreads, int blockSize, std::stack<std::pair<ForwardIt, ForwardIt>> *sortStack, std::mutex *stackMutex, std::atomic<bool> completedThreads[]) {
+        if (numThreads == 1) {
+            // classic: just sort sequentially
+            //std::sort(left, afterLast, c);
+            // advanced: sort sequentially with helping scheme
+            helpingSort(left, afterLast, c, blockSize, sortStack, stackMutex, completedThreads);
             return;
         }
 
+        auto size = std::distance(left, afterLast);
+        int ln, rn;
         auto pivot = choose_pivot(left, afterLast, c);
         auto predicate = [pivot, c](const auto& em){ return c(em, pivot); };
-        auto size = std::distance(left, afterLast);
-        int blockSize = BLOCK_BYTES / sizeof(typename ForwardIt::value_type);
-        int ln, rn;
 
         auto remaining = parallel_partition_phase_one(left, predicate, numThreads, size, blockSize, &ln, &rn);
 
@@ -442,9 +569,20 @@ namespace p_partition  {
         if (processorSplit == 0)
             processorSplit = 1;
 #pragma omp task
-        quicksort(left, split, c, processorSplit);
+        _quicksort(left, split, c, processorSplit, blockSize, sortStack, stackMutex, completedThreads);
 
-        quicksort(split, afterLast, c, numThreads - processorSplit);
+        _quicksort(split, afterLast, c, numThreads - processorSplit, blockSize, sortStack, stackMutex, completedThreads);
+    }
+
+    template <typename ForwardIt, typename Compare>
+    void quicksort(ForwardIt left, ForwardIt afterLast, Compare c) {
+        int numThreads = omp_get_max_threads();
+        int blockSize = BLOCK_BYTES / sizeof(typename ForwardIt::value_type);
+        auto sortStack = std::stack<std::pair<ForwardIt, ForwardIt>>();
+        std::mutex stackMutex;
+        std::atomic<bool> completedThreads[numThreads];
+
+        _quicksort(left, afterLast, c, numThreads, blockSize, &sortStack, &stackMutex, completedThreads);
     }
 
     template <typename ForwardIt, typename Compare>
@@ -477,23 +615,6 @@ namespace p_partition  {
         } else {
             // search right
             nth_element(split, n_th, end, c, numThreads);
-        }
-    }
-
-
-    // test func for nested parallelism
-    void testFunc(){
-        omp_set_nested(2);
-
-#pragma omp parallel for num_threads(5)
-        for(int i = 0; i< 5 ; i++){
-#pragma omp parallel for num_threads(2)
-            for(int j = 0; j<2; j++) {
-                int tid = omp_get_thread_num();
-                int num = omp_get_num_threads();
-                printf("Hello world from omp thread %d %d\n", tid, num);
-                _sleep(3000);
-            }
         }
     }
 

@@ -30,8 +30,8 @@ int main(int argc, char *argv[])
     // BENCHMARK:
     //srand (time(nullptr)); // randomly seed rand
 
-    const int ITERATIONS = 10;
-    const int VECTOR_SIZE = 1000000;
+    const int ITERATIONS = 1;
+    const int VECTOR_SIZE = 10000000;
     auto comparator = [](const auto& em1, const auto& em2){ return em1 < em2; };
 
     double start_gnu = omp_get_wtime();
@@ -50,7 +50,7 @@ int main(int argc, char *argv[])
     for(int i=0; i<ITERATIONS; ++i) {
         std::vector<int> vec(VECTOR_SIZE);
         std::generate(vec.begin(), vec.end(), rand);
-        p_partition::quicksort(vec.begin(), vec.end(), comparator, num_threads);
+        p_partition::quicksort(vec.begin(), vec.end(), comparator);
     }
     double end_ours = omp_get_wtime();
     double total_ours = end_ours - start_ours;
