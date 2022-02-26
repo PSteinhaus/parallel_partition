@@ -14,7 +14,7 @@ namespace p_partition  {
     const int BOTH = 0;
     const int LEFT = 1;
     const int RIGHT = 2;
-    const int BLOCK_BYTES = 8000;   // empirically found optimum
+    const int BLOCK_BYTES = 4096;   // empirically found optimum
 
     //returns 0 if Both neutralized, 1 if left ist neutralized, 2 if right is neutralized
     template <typename ForwardIt, typename UnaryPredicate>
@@ -423,21 +423,31 @@ namespace p_partition  {
         return pivot;
     }
 
+    // source: https://stackoverflow.com/questions/18453945/c-generic-insertion-sort
+    template<typename Iter, typename Compare>
+    inline
+    void insertion_sort(Iter first, Iter last, Compare c)
+    {
+        for (Iter it = first; it != last; ++it)
+            std::rotate(std::upper_bound(first, it, *it, c), it, std::next(it));
+    }
+
     template <typename ForwardIt, typename Compare>
     void helpingSort(ForwardIt left, ForwardIt afterLast, Compare c, int blockSize, std::stack<std::pair<ForwardIt, ForwardIt>> *sortStack, std::mutex *stackMutex, std::atomic<bool> completedThreads[], int totalThreads) {
         start:
         auto size = std::distance(left, afterLast);
-        if (size <= blockSize / 6) {    // empirically found factor
+        if (size <= blockSize / 8) {    // empirically found factor
             // stop recursion and simply sort sequentially
             seq:
-            std::sort(left, afterLast, c);
+            insertion_sort(left, afterLast, c);
+            //std::sort(left, afterLast, c);
         } else {
             // recursively part the interval in two
             auto pivot = choose_pivot(left, afterLast, c);
             auto predicate = [pivot, c](const auto& em){ return c(em, pivot); };
             auto split = std::partition(left, afterLast, predicate);
-            bool leftSmall = std::distance(left, split) <= blockSize / 6;
-            bool rightSmall = std::distance(split, afterLast) <= blockSize / 6;
+            bool leftSmall = std::distance(left, split) <= blockSize / 8;
+            bool rightSmall = std::distance(split, afterLast) <= blockSize / 8;
 
             // if the following condition holds true, then the problem won't be fixed through recursion
             // and the remaining values have to be sorted sequentially (though they probably really are already)
@@ -445,7 +455,8 @@ namespace p_partition  {
                 goto seq;
 
             if (leftSmall) {
-                std::sort(left, split, c);
+                insertion_sort(left, split, c);
+                //std::sort(left, split, c);
             } else {
                 // left isn't small so push it to the work stack
                 stackMutex->lock();
@@ -453,7 +464,8 @@ namespace p_partition  {
                 stackMutex->unlock();
             }
             if (rightSmall) {
-                std::sort(split, afterLast, c);
+                insertion_sort(split, afterLast, c);
+                //std::sort(split, afterLast, c);
             } else {
                 // right isn't small so push it to the work stack
                 stackMutex->lock();
