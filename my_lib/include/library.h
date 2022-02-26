@@ -433,8 +433,9 @@ namespace p_partition  {
     }
 
     template <typename ForwardIt, typename Compare>
-    void helpingSort(ForwardIt left, ForwardIt afterLast, Compare c, int blockSize, std::stack<std::pair<ForwardIt, ForwardIt>> *sortStack, std::mutex *stackMutex, std::atomic<bool> completedThreads[], int totalThreads) {
+    void helpingSort(ForwardIt left, ForwardIt afterLast, Compare c, int blockSize, std::stack<std::pair<ForwardIt, ForwardIt>> *sortStack, std::mutex *stackMutex, std::atomic<int> *completedThreads, int totalThreads) {
         start:
+
         auto size = std::distance(left, afterLast);
         if (size <= blockSize / 8) {    // empirically found factor
             // stop recursion and simply sort sequentially
@@ -468,9 +469,8 @@ namespace p_partition  {
                 //std::sort(split, afterLast, c);
             } else {
                 // right isn't small so push it to the work stack
-                stackMutex->lock();
-                sortStack->push(std::pair<ForwardIt, ForwardIt>(split, afterLast));
-                stackMutex->unlock();
+                left = split;
+                goto start;
             }
 
             /*  // AN OLDER ATTEMPT
@@ -526,6 +526,7 @@ namespace p_partition  {
         }
         // start helping by popping sorting jobs
         while(true) {
+            //std::cout <<"in while"<<std::endl;
             // try to get a job
             if (stackMutex->try_lock()) {
                 if (!sortStack->empty()) {
@@ -540,23 +541,19 @@ namespace p_partition  {
                 } else {
                     stackMutex->unlock();
                     // the job stack is empty, so you might be done
-                    completedThreads[omp_get_thread_num()].store(true);
+                    *completedThreads++;
                 }
             }
             // check for total completion
-            bool completed = true;
-            for (int i = 0; i < totalThreads; ++i) {
-                if (!completedThreads[i].load()) {
-                    completed = false;
-                    break;
-                }
+
+            if (*completedThreads >= totalThreads) {
+                break;
             }
-            if (completed) return;
         }
     }
 
     template <typename ForwardIt, typename Compare>
-    void _quicksort(ForwardIt left, ForwardIt afterLast, Compare c, int numThreads, int blockSize, std::stack<std::pair<ForwardIt, ForwardIt>> *sortStack, std::mutex *stackMutex, std::atomic<bool> completedThreads[], int totalThreads) {
+    void _quicksort(ForwardIt left, ForwardIt afterLast, Compare c, int numThreads, int blockSize, std::stack<std::pair<ForwardIt, ForwardIt>> *sortStack, std::mutex *stackMutex, std::atomic<int> *completedThreads, int totalThreads) {
         if (numThreads == 1) {
             // classic: just sort sequentially
             //std::sort(left, afterLast, c);
@@ -591,9 +588,9 @@ namespace p_partition  {
         int blockSize = BLOCK_BYTES / sizeof(typename ForwardIt::value_type);
         auto sortStack = std::stack<std::pair<ForwardIt, ForwardIt>>();
         std::mutex stackMutex;
-        std::atomic<bool> completedThreads[numThreads];
+        std::atomic<int> completedThreads{0};
 
-        _quicksort(left, afterLast, c, numThreads, blockSize, &sortStack, &stackMutex, completedThreads, numThreads);
+        _quicksort(left, afterLast, c, numThreads, blockSize, &sortStack, &stackMutex, &completedThreads, numThreads);
     }
 
     template <typename ForwardIt, typename Compare>
