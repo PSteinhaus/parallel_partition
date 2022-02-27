@@ -7,7 +7,6 @@
 int main(int argc, char *argv[])
 {
     std::vector<float> v = {9,8,7,6,5,4,3,2,1,0};
-    int blocklength = 5;
     float pivot = 4.5;
 
 
@@ -23,8 +22,6 @@ int main(int argc, char *argv[])
 
 
     std::cout << leftNeutralized << " " << rightNeutralized << std::endl;
-
-    //p_partition::testFunc();
 
 
     // BENCHMARK:
@@ -57,6 +54,18 @@ int main(int argc, char *argv[])
 
     std::cout << "our implementation: " << total_ours << "\n";
     std::cout << "num_threads: " << num_threads << "\n";
+
+
+    double start_std = omp_get_wtime();
+    for(int i=0; i<ITERATIONS; ++i) {
+        std::vector<int> vec(VECTOR_SIZE);
+        std::generate(vec.begin(), vec.end(), rand);
+        std::sort(vec.begin(), vec.end(), comparator);
+    }
+    double end_std = omp_get_wtime();
+    double total_std = end_std - start_std;
+
+    std::cout << "std implementation: " << total_std << "\n";
 }
 
 
