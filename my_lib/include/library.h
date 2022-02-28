@@ -14,7 +14,8 @@ namespace p_partition  {
     const int BOTH = 0;
     const int LEFT = 1;
     const int RIGHT = 2;
-    const int BLOCK_BYTES = 5000;   // empirically found optimum
+    static unsigned long BLOCK_BYTES = 5000;   // empirically found optimum
+    static unsigned long breakoffFactor = 1;
 
     //returns 0 if Both neutralized, 1 if left ist neutralized, 2 if right is neutralized
     template <typename ForwardIt, typename UnaryPredicate>
@@ -336,13 +337,6 @@ namespace p_partition  {
             gotBlocks = get_right_block_from_remaining(&remainingBlocks, size-rn, &rightFromRemaining);
         }
 
-        /*
-        std::cout << "all remaining Blocks: ";
-        for (auto i: remainingBlocks)
-            std::cout << i << ' ';
-        std::cout<< std::endl;
-        */
-
         //sort remaining values
         ForwardIt leftIt = std::next(left,ln);
         ForwardIt rightIt = std::next(left, size-rn);
@@ -436,10 +430,11 @@ namespace p_partition  {
     }
 
     template <typename ForwardIt, typename Compare>
-    void helpingSort(ForwardIt left, ForwardIt afterLast, Compare c, int blockSize, std::stack<std::pair<ForwardIt, ForwardIt>> *sortStack, std::mutex *stackMutex, std::atomic<int> *completedElements, int totalElements) {
+    void helpingSort(ForwardIt left, ForwardIt afterLast, Compare c, unsigned long blockSize, std::stack<std::pair<ForwardIt, ForwardIt>> *sortStack, std::mutex *stackMutex, std::atomic<unsigned long> *completedElements, unsigned long totalElements) {
+        unsigned long breakoff = blockSize * breakoffFactor / 64;
         start:
         auto size = std::distance(left, afterLast);
-        if (size <= blockSize) {    // empirically found factor
+        if (size <= breakoff) {    // empirically found factor
             // stop recursion and simply sort sequentially
             seq:
             *completedElements += size;
@@ -553,7 +548,7 @@ namespace p_partition  {
     }
 
     template <typename ForwardIt, typename Compare>
-    void _quicksort(ForwardIt left, ForwardIt afterLast, Compare c, int numThreads, int blockSize, std::stack<std::pair<ForwardIt, ForwardIt>> *sortStack, std::mutex *stackMutex, std::atomic<int> *completedElements, int totalElements) {
+    void _quicksort(ForwardIt left, ForwardIt afterLast, Compare c, int numThreads, unsigned long blockSize, std::stack<std::pair<ForwardIt, ForwardIt>> *sortStack, std::mutex *stackMutex, std::atomic<unsigned long> *completedElements, unsigned long totalElements) {
 
         if (numThreads == 1) {
             // classic: just sort sequentially
@@ -569,6 +564,13 @@ namespace p_partition  {
         auto predicate = [pivot, c](const auto& em){ return c(em, pivot); };
 
         auto remaining = parallel_partition_phase_one(left, predicate, numThreads, size, blockSize, &ln, &rn);
+
+        if (ln == 0) {
+            // no blocks could be neutralized, default back to std::sort
+            //std::sort(left, afterLast, c);
+            helpingSort(left, afterLast, c, blockSize, sortStack, stackMutex, completedElements, totalElements);
+            return;
+        }
 
         ForwardIt split = parallel_partition_phase_two(left, afterLast, predicate, size, blockSize, ln, rn, remaining);
 
@@ -592,14 +594,14 @@ namespace p_partition  {
 
     template <typename ForwardIt, typename Compare>
     void quicksort(ForwardIt left, ForwardIt afterLast, Compare c) {
-        //std::cout<<omp_get_max_threads()<<std::endl;
         omp_set_nested(256);
         int numThreads = omp_get_max_threads();
-        int totalElements = std::distance(left, afterLast);
-        int blockSize = BLOCK_BYTES / sizeof(typename ForwardIt::value_type);
+        unsigned long totalElements = std::distance(left, afterLast);
+        unsigned long blockSize = BLOCK_BYTES / sizeof(typename ForwardIt::value_type);
+
         auto sortStack = std::stack<std::pair<ForwardIt, ForwardIt>>();
         std::mutex stackMutex;
-        std::atomic<int> completedElements{0};
+        std::atomic<unsigned long> completedElements{0};
 
         _quicksort(left, afterLast, c, numThreads, blockSize, &sortStack, &stackMutex, &completedElements, totalElements);
     }
