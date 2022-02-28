@@ -14,7 +14,7 @@ namespace p_partition  {
     const int BOTH = 0;
     const int LEFT = 1;
     const int RIGHT = 2;
-    const int BLOCK_BYTES = 4096;   // empirically found optimum
+    const int BLOCK_BYTES = 5000;   // empirically found optimum
 
     //returns 0 if Both neutralized, 1 if left ist neutralized, 2 if right is neutralized
     template <typename ForwardIt, typename UnaryPredicate>
@@ -140,7 +140,7 @@ namespace p_partition  {
             int leftCounter = 0, rightCounter = 0;
             int posLeftBlock, posRightBlock;
             // DEBUG
-            int t_num = omp_get_thread_num();
+            //int t_num = omp_get_thread_num();
             {
                 taken_mtx.lock();
                 // get your first left block
@@ -168,6 +168,7 @@ namespace p_partition  {
                 switch (side) {
                     case BOTH:
                         ++leftCounter;
+                        ++rightCounter;
                         taken_mtx.lock();
                         // DEBUG
                         //std::cout << "thread "<< t_num << " finished left block: " << posLeftBlock << std::endl;
@@ -178,11 +179,13 @@ namespace p_partition  {
                             // DEBUG
                             //std::cout << "thread "<< t_num << " took left block: " << posLeftBlock << std::endl;
                         }
-                        taken_mtx.unlock();
                         // don't break, just continue with the RIGHT case to get a right block as well
+                        // jump to where the lock is already taken to avoid having to un- and relock it
+                        goto right_locked;
                     case RIGHT:
                         ++rightCounter;
                         taken_mtx.lock();
+                        right_locked:
                         // DEBUG
                         //std::cout << "thread "<< t_num << " finished right block: " << size - posRightBlock - blockSize << std::endl;
                         gotRightBlock = block_available(leftTaken, rightTaken, size, blockSize);
@@ -439,8 +442,8 @@ namespace p_partition  {
         if (size <= blockSize) {    // empirically found factor
             // stop recursion and simply sort sequentially
             seq:
-            //insertion_sort(left, afterLast, c);
             *completedElements += size;
+            //insertion_sort(left, afterLast, c);
             std::sort(left, afterLast, c);
         } else {
             // recursively part the interval in two
