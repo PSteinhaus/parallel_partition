@@ -95,5 +95,5 @@ int main(int argc, char *argv[])
     // BENCHMARK:
     srand (time(nullptr)); // randomly seed rand
 
-    benchmark(true, true, false);
+    benchmark(true, false, false);
 }
