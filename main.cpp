@@ -57,7 +57,7 @@ void benchmark(bool csv, bool v0, bool others_only=false) {
 
                 for (int bFactor = 1; bFactor <= 64 * 64 * (v0 ? 1 : 8); bFactor *= 2) {
 
-                    unsigned long breakoff = blockSize * bFactor / 64;
+                    size_t breakoff = blockSize * (size_t)bFactor / 64;
                     // breakoffs larger than the vector size don't need to be tested, as they behave all the same
                     if (breakoff > vector_size) continue;
 

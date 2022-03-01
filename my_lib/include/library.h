@@ -15,7 +15,7 @@ namespace p_partition  {
     const int LEFT = 1;
     const int RIGHT = 2;
     static size_t BLOCK_BYTES = 1280000;
-    static unsigned long breakoffFactor = 1;
+    static size_t breakoffFactor = 1;
 
     //returns 0 if Both neutralized, 1 if left ist neutralized, 2 if right is neutralized
     template <typename ForwardIt, typename UnaryPredicate>
