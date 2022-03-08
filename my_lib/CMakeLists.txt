@@ -4,8 +4,6 @@ project(parallel_partition LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 14)
 find_package(OpenMP REQUIRED)
 
-# these compiler flags are not valid for all compilers (not portable!)
-# TODO: make this more portable
 set(CMAKE_CXX_FLAGS "-Ofast -std=c++14 -fopenmp -march=native")
 
 #compile library

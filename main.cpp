@@ -61,7 +61,7 @@ void benchmark(bool csv, bool v0, bool others_only=false) {
                     // breakoffs larger than the vector size don't need to be tested, as they behave all the same
                     if (breakoff > vector_size) continue;
 
-                    p_partition::breakoffFactor = bFactor;
+                    p_partition::BREAKOFF_FACTOR = bFactor;
                     // our sort
                     double total_ours = 0.;
                     for (int i = 0; i < iterations; ++i) {

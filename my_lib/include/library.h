@@ -15,14 +15,13 @@ namespace p_partition  {
     const int LEFT = 1;
     const int RIGHT = 2;
     static size_t BLOCK_BYTES = 1280000;
-    static size_t breakoffFactor = 1;
+    static size_t BREAKOFF_FACTOR = 64;
 
-    //returns 0 if Both neutralized, 1 if left ist neutralized, 2 if right is neutralized
+    // returns 0 if Both neutralized, 1 if left ist neutralized, 2 if right is neutralized
     template <typename ForwardIt, typename UnaryPredicate>
     int neutralize(ForwardIt left, ForwardIt right, size_t blocksize, UnaryPredicate p){
         size_t i=0 , j=0;
         do {
-            //std::cout << "1" << std::endl;
             for (; i < blocksize; i++){
                 if (!p(*left))
                     break;
@@ -42,7 +41,6 @@ namespace p_partition  {
             j++; right = std::next(right);
         } while ( i < blocksize && j < blocksize );
 
-        //std::cout << i << " " << j << std::endl;
         if (i == blocksize) {
             if (j == blocksize)
                 return BOTH;
@@ -73,7 +71,6 @@ namespace p_partition  {
     bool get_left_block_from_remaining(std::vector<size_t> *remainingBlocks, size_t ln, size_t *left){
         std::vector<size_t>::iterator remBegin = (*remainingBlocks).begin(), remEnd = (*remainingBlocks).end();
         while (remBegin != remEnd) {
-            //std::cout << "2" << std::endl;
             if (*remBegin < ln) {
                 *left = *remBegin;
                 (*remainingBlocks).erase(remBegin);
@@ -87,7 +84,6 @@ namespace p_partition  {
     bool get_right_block_from_remaining(std::vector<size_t> *remainingBlocks, size_t rn, size_t *right){
         std::vector<size_t>::iterator remBegin = (*remainingBlocks).begin(), remEnd = (*remainingBlocks).end();
         while (remBegin != remEnd) {
-            //std::cout << "3" << std::endl;
             if (*remBegin >= rn) {
                 *right = *remBegin;
                 (*remainingBlocks).erase(remBegin);
@@ -100,9 +96,9 @@ namespace p_partition  {
 
     int get_blocks_from_remaining(std::vector<size_t> *remainingBlocks, size_t ln, size_t rn, size_t *left, size_t *right){
         bool foundBlock = get_left_block_from_remaining(remainingBlocks, ln, left);
-        if(foundBlock == false){return false;}
+        if(!foundBlock){return false;}
         foundBlock = get_right_block_from_remaining(remainingBlocks, rn, right);
-        if(foundBlock == false){
+        if(!foundBlock){
             (*remainingBlocks).push_back(*left);
             return false;
         }
@@ -122,17 +118,10 @@ namespace p_partition  {
 
 #pragma omp parallel reduction(+: ln, rn) num_threads(numThreads)
         {
-            /*
-            if (omp_get_thread_num() == 1) {
-                std::cout << "number of threads: " << omp_get_num_threads() << std::endl;
-            }
-            */
             ForwardIt leftBlock, rightBlock;
             bool gotLeftBlock, gotRightBlock;
             size_t leftCounter = 0, rightCounter = 0;
             size_t posLeftBlock, posRightBlock;
-            // DEBUG
-            //int t_num = omp_get_thread_num();
             {
                 taken_mtx.lock();
                 // get your first left block
@@ -140,21 +129,16 @@ namespace p_partition  {
                 if (gotLeftBlock) {
                     posLeftBlock = leftTaken;
                     leftBlock = get_left_block(left, &leftTaken, blockSize);
-                    // DEBUG
-                    //std::cout << "thread "<< t_num << " took left block: " << posLeftBlock << std::endl;
                 }
                 // get your first right block
                 gotRightBlock = block_available(leftTaken, rightTaken, size, blockSize);
                 if (gotRightBlock) {
                     posRightBlock = rightTaken;
                     rightBlock = get_right_block(left, &rightTaken, size, blockSize);
-                    // DEBUG
-                    //std::cout << "thread "<< t_num << " took right block: " <<  size - posRightBlock - blockSize << std::endl;
                 }
                 taken_mtx.unlock();
             }
             while (gotLeftBlock && gotRightBlock) {
-                //std::cout << "4" << std::endl;
                 int side = neutralize(leftBlock, rightBlock, blockSize, p);
                 // try to get new blocks, depending on which side was completed in the neutralize call
                 switch (side) {
@@ -162,14 +146,10 @@ namespace p_partition  {
                         ++leftCounter;
                         ++rightCounter;
                         taken_mtx.lock();
-                        // DEBUG
-                        //std::cout << "thread "<< t_num << " finished left block: " << posLeftBlock << std::endl;
                         gotLeftBlock = block_available(leftTaken, rightTaken, size, blockSize);
                         if (gotLeftBlock) {
                             posLeftBlock = leftTaken;
                             leftBlock = get_left_block(left, &leftTaken, blockSize);
-                            // DEBUG
-                            //std::cout << "thread "<< t_num << " took left block: " << posLeftBlock << std::endl;
                         }
                         // don't break, just continue with the RIGHT case to get a right block as well
                         // jump to where the lock is already taken to avoid having to un- and relock it
@@ -178,28 +158,20 @@ namespace p_partition  {
                         ++rightCounter;
                         taken_mtx.lock();
                         right_locked:
-                        // DEBUG
-                        //std::cout << "thread "<< t_num << " finished right block: " << size - posRightBlock - blockSize << std::endl;
                         gotRightBlock = block_available(leftTaken, rightTaken, size, blockSize);
                         if (gotRightBlock) {
                             posRightBlock = rightTaken;
                             rightBlock = get_right_block(left, &rightTaken, size, blockSize);
-                            // DEBUG
-                            //std::cout << "thread "<< t_num << " took right block: " <<  size - posRightBlock - blockSize << std::endl;
                         }
                         taken_mtx.unlock();
                         break;
                     case LEFT:
                         ++leftCounter;
                         taken_mtx.lock();
-                        // DEBUG
-                        //std::cout << "thread "<< t_num << " finished left block: " << posLeftBlock << std::endl;
                         gotLeftBlock = block_available(leftTaken, rightTaken, size, blockSize);
                         if (gotLeftBlock) {
                             posLeftBlock = leftTaken;
                             leftBlock = get_left_block(left, &leftTaken, blockSize);
-                            // DEBUG
-                            //std::cout << "thread "<< t_num << " took left block: " << posLeftBlock << std::endl;
                         }
                         taken_mtx.unlock();
                         break;
@@ -230,11 +202,7 @@ namespace p_partition  {
         gotBlocks = get_blocks_from_remaining(&remainingBlocks, ln, size-rn, &leftFromRemaining,
                                               &rightFromRemaining);
         while(gotBlocks) {
-            //std::cout << "5" << std::endl;
-            //std::cout << "leftBlockPos: " << blockPos << std::endl;
             leftBlock = std::next(left, leftFromRemaining);
-
-            //std::cout << "rightBlockPos: " << blockPos << std::endl;
             rightBlock = std::next(left, rightFromRemaining);
 
             int side = neutralize(leftBlock, rightBlock, blockSize, p);
@@ -259,15 +227,12 @@ namespace p_partition  {
         // now, neutralized but not well-placed blocks have to be swapped, if there are any
 
         size_t rightOfLN = ln, leftOfRN = size-rn-blockSize;
-        //std::cout << "ln: " << ln << " rn: " << rn << std::endl;
 
         //try to get left block for swap
         gotBlocks = get_left_block_from_remaining(&remainingBlocks, ln, &leftFromRemaining);
         while(gotBlocks){
-            //std::cout << "6" << std::endl;
 
             //get left block iterator
-            //std::cout << "leftBlockPos: " << blockPos << std::endl;
             leftBlock = std::next(left, leftFromRemaining);
 
             //get neutralized block between LN and RN to swap with
@@ -275,16 +240,13 @@ namespace p_partition  {
             // skip over all blocks that are still non-neutralized
             size_t shift = 0;  // store the number of non-neutralized elements right of LN in this shift, to use it later
             while(std::find(remainingBlocks.begin(), remainingBlocks.end(), pos+shift) != remainingBlocks.end()){
-                //std::cout << "7" << std::endl;
                 shift += blockSize;
             }
             pos = pos + shift;
-            //std::cout << "left swap with pos: " << pos << std::endl;
             rightBlock = std::next(left, pos);
 
             //swap
             for(size_t i = 0; i< blockSize; i++){
-                //std::cout << "leftBlock: " << *leftBlock << " rightBlock: " << *rightBlock << std::endl;
                 std::swap(*leftBlock, *rightBlock);
                 leftBlock = std::next(leftBlock);
                 rightBlock = std::next(rightBlock);
@@ -298,9 +260,7 @@ namespace p_partition  {
         //try to get right block for swap
         gotBlocks = get_right_block_from_remaining(&remainingBlocks, size-rn, &rightFromRemaining);
         while(gotBlocks) {
-            //std::cout << "8" << std::endl;
             //get right block iterator
-            //std::cout << "rightBlockPos: " << blockPos << std::endl;
             rightBlock = std::next(left, rightFromRemaining);
 
             //get neutralized block between LN and RN to swap with
@@ -308,16 +268,13 @@ namespace p_partition  {
             // skip over all blocks that are still non-neutralized
             size_t shift = 0;
             while(std::find(remainingBlocks.begin(), remainingBlocks.end(), pos-shift) != remainingBlocks.end()){
-                //std::cout << "9" << std::endl;
                 shift += blockSize;
             }
             pos = pos-shift;
-            //std::cout << "right swap with pos: " << pos << std::endl;
             leftBlock = std::next(left, pos);
 
             //swap
             for(size_t i = 0; i< blockSize; i++){
-                //std::cout << "leftBlock: " << *leftBlock << " rightBlock: " << *rightBlock << std::endl;
                 std::swap(*leftBlock, *rightBlock);
                 leftBlock = std::next(leftBlock);
                 rightBlock = std::next(rightBlock);
@@ -337,55 +294,15 @@ namespace p_partition  {
 
     template <typename ForwardIt, typename UnaryPredicate>
     ForwardIt partition(ForwardIt left, ForwardIt afterLast, UnaryPredicate p, int numThreads){
-        //TODO maybe use long to make user there is no overflow on big arrays
         size_t size = std::distance(left, afterLast);
         size_t ln, rn;
-
         size_t blockSize = BLOCK_BYTES / sizeof(typename ForwardIt::value_type);
 
-        //TODO maybe use list ?
-        //TODO maybe only give pointers to functions
         std::vector<size_t> remainingBlocks;
-
-        //print array
-        std::cout << "all elements in Input: ";
-        ForwardIt temp = left;
-        while(temp != afterLast){
-            std::cout << *temp << ' ';
-            temp = std::next(temp);
-        }
-        std::cout << std::endl;
-
 
         remainingBlocks = parallel_partition_phase_one(left, p, numThreads, size, blockSize, &ln, &rn);
 
-        //print some info
-        std::cout << std::endl;
-        std::cout << "ln: "<< ln << " rn: " << rn << std::endl;
-        std::cout << "all remaining Blocks: ";
-        for (auto i: remainingBlocks)
-            std::cout << i << ' ';
-        std::cout<< std::endl;
-
-        //print array
-        std::cout << "all elements in Input: ";
-        temp = left;
-        while(temp != afterLast){
-            std::cout << *temp << ' ';
-            temp = std::next(temp);
-        }
-        std::cout << std::endl;
-
         auto split = parallel_partition_phase_two(left, p, size, blockSize, ln, rn, remainingBlocks);
-
-        //print array
-        std::cout << std::endl;
-        std::cout << "all elements in Input: ";
-        temp = left;
-        while(temp != afterLast){
-            std::cout << *temp << ' ';
-            temp = std::next(temp);
-        }
 
         return split;
     }
@@ -399,18 +316,12 @@ namespace p_partition  {
         auto middle = *midIter;
         auto last = *std::next(midIter, size - size/2 - 1);
 
-        // DEBUG: these outputs illustrate how quickly a state of near sorted-ness is reached
-        //std::cout << "FIRST : " << first << std::endl;
-        //std::cout << "MIDDLE: " << middle << std::endl;
-        //std::cout << "LAST  : " << last << std::endl;
-
         auto pivot = (std::min({first, middle, last}, c) + std::max({first, middle, last}, c)) / 2;
-
-        //std::cout << "PIVOT  : " << pivot << std::endl;
 
         return pivot;
     }
 
+    /*
     // source: https://stackoverflow.com/questions/18453945/c-generic-insertion-sort
     template<typename Iter, typename Compare>
     inline
@@ -419,10 +330,11 @@ namespace p_partition  {
         for (Iter it = first; it != last; ++it)
             std::rotate(std::upper_bound(first, it, *it, c), it, std::next(it));
     }
+    */
 
     template <typename ForwardIt, typename Compare>
     void helpingSort(ForwardIt left, ForwardIt afterLast, Compare c, unsigned long blockSize, std::stack<std::pair<ForwardIt, ForwardIt>> *sortStack, std::mutex *stackMutex, std::atomic<size_t> *completedElements, size_t totalElements) {
-        size_t breakoff = blockSize * breakoffFactor / 64;
+        size_t breakoff = blockSize * BREAKOFF_FACTOR / 64;
         start:
         auto size = std::distance(left, afterLast);
         if (size <= breakoff) {    // empirically found factor
@@ -440,14 +352,11 @@ namespace p_partition  {
             // if the following condition holds true, then the problem won't be fixed through recursion
             // and the remaining values have to be sorted sequentially (though they probably really are already)
             if (split == left || split == afterLast) {
-                //std::cout << "test" << std::endl;
                 goto seq;
             }
 
 
             // left isn't small so push it to the work stack
-            //int leftSize = std::distance(left, split);
-            //std::cout << "leftSize: " << leftSize << std::endl;
             stackMutex->lock();
             sortStack->push(std::pair<ForwardIt, ForwardIt>(left, split));
             stackMutex->unlock();
@@ -455,84 +364,24 @@ namespace p_partition  {
             // right isn't small so push it to the work stack
             left = split;
             goto start;
-
-
-            /*  // AN OLDER ATTEMPT
-            // push the first half onto the stack and recursively sort the latter
-            // but only if you can; if the lock is taken start sorting first
-            if (stackMutex->try_lock()) {
-                sortStack->push(std::pair<ForwardIt, ForwardIt>(left, split));
-                stackMutex->unlock();
-                helpingSort(split, afterLast, c, blockSize, sortStack, stackMutex, completedThreads);
-            } else {
-                // lock is taken, sort first, then push
-                helpingSort(split, afterLast, c, blockSize, sortStack, stackMutex, completedThreads);
-                stackMutex->lock();
-                sortStack->push(std::pair<ForwardIt, ForwardIt>(left, split));
-                stackMutex->unlock();
-            }
-            */
-
-            /*  // A SLIGHTLY YOUNGER ATTEMPT TO IMPROVE/FIX THE OLDER ATTEMPT
-            if (!leftSmall) {
-                if (stackMutex->try_lock()) {
-                    sortStack->push(std::pair<ForwardIt, ForwardIt>(left, split));
-                    stackMutex->unlock();
-                    if (!rightSmall) {
-                        helpingSort(split, afterLast, c, blockSize, sortStack, stackMutex, completedThreads);
-                    } else {
-                        // right is small, so sort sequentially
-                        std::sort(split, afterLast, c);
-                    }
-                } else {
-                    // lock is taken, sort first, then push
-                    if (!rightSmall) {
-                        helpingSort(split, afterLast, c, blockSize, sortStack, stackMutex, completedThreads);
-                    } else {
-                        // right is small, so sort sequentially
-                        std::sort(split, afterLast, c);
-                    }
-                    stackMutex->lock();
-                    sortStack->push(std::pair<ForwardIt, ForwardIt>(left, split));
-                    stackMutex->unlock();
-                }
-            } else {
-                // left is small, so sort sequentially
-                std::sort(left, split, c);
-                if (!rightSmall) {
-                    helpingSort(split, afterLast, c, blockSize, sortStack, stackMutex, completedThreads);
-                } else {
-                    // right is small, so sort sequentially
-                    std::sort(split, afterLast, c);
-                }
-            }
-            */
         }
         // start helping by popping sorting jobs
         while(true) {
-            //std::cout <<"in while"<<std::endl;
             // try to get a job
             if (stackMutex->try_lock()) {
                 if (!sortStack->empty()) {
                     std::pair<ForwardIt, ForwardIt> sortJob = sortStack->top();
                     sortStack->pop();
-                    //int sSize = sortStack->size();
-                    //std::cout << "STACK SIZE: " << sSize << std::endl;
                     stackMutex->unlock();
                     left = sortJob.first;
                     afterLast = sortJob.second;
                     goto start;
-                    // DEBUG: recursion depth might become a problem here (for some reason...)
-                    //helpingSort(sortJob.first, sortJob.second, c, blockSize, sortStack, stackMutex, completedThreads);
                 } else {
                     stackMutex->unlock();
                 }
             }
             // check for total completion
-            size_t completed = *completedElements;
-            //std::cout << "COMPLETED: " << completed << std::endl;
-            //std::cout << "TOTAL: " << totalElements << std::endl;
-            if (completed >= totalElements) {
+            if (*completedElements >= totalElements) {
                 break;
             }
         }
@@ -541,6 +390,7 @@ namespace p_partition  {
     template <typename ForwardIt, typename Compare>
     void _quicksort(ForwardIt left, ForwardIt afterLast, Compare c, int numThreads, size_t blockSize, std::stack<std::pair<ForwardIt, ForwardIt>> *sortStack, std::mutex *stackMutex, std::atomic<size_t> *completedElements, size_t totalElements) {
 
+        // Phase 4: if only one thread is left sort sequentially with helping scheme
         if (numThreads == 1) {
             // classic: just sort sequentially
             //std::sort(left, afterLast, c);
@@ -556,8 +406,8 @@ namespace p_partition  {
 
         auto remaining = parallel_partition_phase_one(left, predicate, numThreads, size, blockSize, &ln, &rn);
 
-        if (ln == 0) {
-            // no blocks could be neutralized, default back to std::sort
+        if (ln == 0 && rn == 0) {
+            // no blocks could be neutralized, default back to helping sort
             //std::sort(left, afterLast, c);
             helpingSort(left, afterLast, c, blockSize, sortStack, stackMutex, completedElements, totalElements);
             return;
@@ -565,13 +415,14 @@ namespace p_partition  {
 
         ForwardIt split = parallel_partition_phase_two(left, predicate, size, blockSize, ln, rn, remaining);
 
-        // split the threads based on the size of the new partitions
+        // Phase 3: split the threads based on the size of the new partitions
         auto s = std::distance(left, split);
         int processorSplit = (size_t)numThreads * s / size;
         if (processorSplit == 0)
             processorSplit = 1;
 
 
+        // recursively start two new partition jobs, one for the left and one for the right side
 #pragma omp parallel num_threads(2)
         {
             if(omp_get_thread_num() == 0){
@@ -585,14 +436,15 @@ namespace p_partition  {
 
     template <typename ForwardIt, typename Compare>
     void quicksort(ForwardIt left, ForwardIt afterLast, Compare c) {
-        omp_set_nested(256);
+        omp_set_nested(1);  // enable nested parallelism as some compilers (Intel) disable it by default
         int numThreads = omp_get_max_threads();
         size_t totalElements = std::distance(left, afterLast);
         size_t blockSize = BLOCK_BYTES / sizeof(typename ForwardIt::value_type);
 
-        auto sortStack = std::stack<std::pair<ForwardIt, ForwardIt>>();
-        std::mutex stackMutex;
-        std::atomic<size_t> completedElements{0};
+        auto sortStack = std::stack<std::pair<ForwardIt, ForwardIt>>(); // holds ranges to be further sorted in helping sort
+        std::mutex stackMutex;  // used to protect the stack used in the helping scheme
+        std::atomic<size_t> completedElements{0};   // counting how many elements have been sorted to completion
+                                                    // in order to be able to stop the helping scheme once everything has been sorted
 
         _quicksort(left, afterLast, c, numThreads, blockSize, &sortStack, &stackMutex, &completedElements, totalElements);
     }
@@ -605,7 +457,7 @@ namespace p_partition  {
         size_t blockSize = BLOCK_BYTES / sizeof(typename ForwardIt::value_type);
         size_t ln, rn;
 
-        const size_t BREAKOFF = 4;
+        const size_t BREAKOFF = 80000;
         if (size < BREAKOFF) {
             // for small sizes just use std::nth_element
             std::nth_element(begin, n_th, end, c);
@@ -617,8 +469,6 @@ namespace p_partition  {
         ForwardIt split = parallel_partition_phase_two(begin, predicate, size, blockSize, ln, rn, remaining);
 
         // check whether you have to search left or right of the split
-        // TODO: find out whether there's a better way to calculate this without making any assumptions about the iterators,
-        //       or whether we should try to somehow check if the iterators are random access iterators so we can just do `n_th < split`
         auto n = std::distance(begin, n_th);
         auto s = std::distance(begin, split);
         if (n < s) {
