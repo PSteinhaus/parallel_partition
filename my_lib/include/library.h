@@ -321,16 +321,6 @@ namespace p_partition  {
         return pivot;
     }
 
-    /*
-    // source: https://stackoverflow.com/questions/18453945/c-generic-insertion-sort
-    template<typename Iter, typename Compare>
-    inline
-    void insertion_sort(Iter first, Iter last, Compare c)
-    {
-        for (Iter it = first; it != last; ++it)
-            std::rotate(std::upper_bound(first, it, *it, c), it, std::next(it));
-    }
-    */
 
     template <typename ForwardIt, typename Compare>
     void helpingSort(ForwardIt left, ForwardIt afterLast, Compare c, unsigned long blockSize, std::stack<std::pair<ForwardIt, ForwardIt>> *sortStack, std::mutex *stackMutex, std::atomic<size_t> *completedElements, size_t totalElements) {
@@ -392,9 +382,7 @@ namespace p_partition  {
 
         // Phase 4: if only one thread is left sort sequentially with helping scheme
         if (numThreads == 1) {
-            // classic: just sort sequentially
-            //std::sort(left, afterLast, c);
-            // advanced: sort sequentially with helping scheme
+            // sort sequentially with helping scheme
             helpingSort(left, afterLast, c, blockSize, sortStack, stackMutex, completedElements, totalElements);
             return;
         }
